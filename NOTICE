@@ -1,0 +1,43 @@
+rivet-webp — a WebP decoder and encoder (lossy, lossless, alpha, animation)
+Copyright 2026 Ely Erin Fox
+
+This product is licensed under the Open Encoding Attribution License,
+Version 1.0 (see LICENSE.md). It is source-available, not open source: the
+attribution duty in §5 applies to commercial use; §4 requires this NOTICE to
+be carried forward with any distribution.
+
+------------------------------------------------------------------------------
+Provenance
+------------------------------------------------------------------------------
+
+The container parser and writer, the lossless (VP8L) decoder and encoder,
+the alpha (ALPH) coding, the animation compositor and encoder and the
+colour conversion are original implementations written from RFC 9649 (WebP
+Image Format) and ITU-R BT.601. They are not translations of, and do not
+derive from, any other WebP implementation's source; none was read (not
+libwebp, not image-rs's image-webp, not any other), and none is run by the
+tests. The lossy (VP8) bitstream is decoded and encoded by rivet-vp8, this
+project's own clean-room VP8 codec written from RFC 6386.
+docs/PROVENANCE.md records each source and every point where the RFC is
+silent or ambiguous and what decided it.
+
+The decoder is checked against Google's public WebP test files and gallery
+images (libwebp-test-data and the WebP gallery), used as data and not
+distributed here.
+
+------------------------------------------------------------------------------
+Patents
+------------------------------------------------------------------------------
+
+WebP and VP8 are generally offered royalty-free by their designers. This
+licence grants no rights under any patent, and the authors make no claim
+about whether a licence is needed for any use.
+
+------------------------------------------------------------------------------
+Third-party components
+------------------------------------------------------------------------------
+
+rivet-vp8 (https://github.com/rivet-transcoder/rivet-vp8) — Open Encoding
+Attribution License 1.0, same author
+thiserror (https://crates.io/crates/thiserror), through rivet-vp8 — MIT OR
+Apache-2.0
