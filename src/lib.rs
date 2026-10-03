@@ -34,13 +34,18 @@
 #![allow(clippy::needless_range_loop)]
 
 #[allow(dead_code)]
+mod alpha;
+#[allow(dead_code)]
 mod bits;
+mod container;
+mod decoder;
 mod error;
 #[allow(dead_code)]
 mod huffman;
-#[allow(dead_code)]
 mod lossless;
+mod lossy;
 
+pub use decoder::{DecodeOptions, Decoder, Format, Frame, Frames, Info, UnknownChunk};
 pub use error::{Error, Result};
 
 /// An RGBA picture: 8 bits a channel, not premultiplied, rows top to
@@ -96,4 +101,16 @@ impl Default for Limits {
             max_animation_pixels: 1 << 33,
         }
     }
+}
+
+/// Decodes a WebP file: a still image, or the first frame of an animation
+/// as composited on its canvas.
+pub fn decode(data: &[u8]) -> Result<Image> {
+    Decoder::new(data)?.decode()
+}
+
+/// Reads a WebP file's description (size, alpha, animation, metadata)
+/// without decoding pixels.
+pub fn probe(data: &[u8]) -> Result<Info> {
+    Ok(Decoder::new(data)?.info())
 }
