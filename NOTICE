@@ -37,7 +37,7 @@ about whether a licence is needed for any use.
 Third-party components
 ------------------------------------------------------------------------------
 
-rivet-vp8 (https://github.com/rivet-transcoder/rivet-vp8) — Open Encoding
+rivet-vp8 (https://github.com/safewords/rivet-vp8) — Open Encoding
 Attribution License 1.0, same author
 thiserror (https://crates.io/crates/thiserror), through rivet-vp8 — MIT OR
 Apache-2.0

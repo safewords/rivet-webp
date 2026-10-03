@@ -5,8 +5,8 @@ edition = "2024"
 rust-version = "1.99"
 license-file = "LICENSE.md"
 readme = "README.md"
-repository = "https://github.com/rivet-transcoder/rivet-webp"
-homepage = "https://github.com/rivet-transcoder/rivet-webp"
+repository = "https://github.com/safewords/rivet-webp"
+homepage = "https://github.com/safewords/rivet-webp"
 documentation = "https://docs.rs/rivet-webp"
 authors = ["Ely Erin Fox"]
 description = "A WebP decoder and encoder in Rust, written from RFC 9649: lossy (VP8, through rivet-vp8) and lossless (VP8L) stills, alpha (ALPH), animation with compositing, ICC / Exif / XMP passed through. No C, no system libraries, no build script. rivet's WebP codec. Imported as `webp`."
@@ -18,11 +18,11 @@ exclude = [".github/", "docs/", "tools/"]
 name = "webp"
 
 [dependencies]
-vp8 = { package = "rivet-vp8", git = "https://github.com/rivet-transcoder/rivet-vp8", branch = "develop" }
+vp8 = { package = "rivet-vp8", git = "https://github.com/safewords/rivet-vp8", branch = "develop" }
 
 [dev-dependencies]
 md5 = "0.7"
-rpng = { package = "rivet-png", git = "https://github.com/rivet-transcoder/rivet-png", branch = "develop" }
+rpng = { package = "rivet-png", git = "https://github.com/safewords/rivet-png", branch = "develop" }
 
 [profile.test]
 opt-level = 2

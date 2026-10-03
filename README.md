@@ -1,17 +1,17 @@
 # rivet-webp
 
-[![CI](https://github.com/rivet-transcoder/rivet-webp/actions/workflows/ci.yml/badge.svg)](https://github.com/rivet-transcoder/rivet-webp/actions/workflows/ci.yml)
+[![CI](https://github.com/safewords/rivet-webp/actions/workflows/ci.yml/badge.svg)](https://github.com/safewords/rivet-webp/actions/workflows/ci.yml)
 
 A **WebP decoder and encoder** in Rust: lossy and lossless stills, alpha,
 animation, metadata. No C, no system libraries, no build script, nothing to
 install on a build host. Written from RFC 9649 (*WebP Image Format*), not
 translated from libwebp or any other implementation; lossy frames are VP8,
-coded by [rivet-vp8](https://github.com/rivet-transcoder/rivet-vp8), this
+coded by [rivet-vp8](https://github.com/safewords/rivet-vp8), this
 project's own clean-room VP8 codec. The decoder reproduces Google's
 reference output on every file of Google's public WebP test data it was
 checked on (the figures are [below](#how-it-is-checked)).
 
-Written for the **[rivet](https://github.com/rivet-transcoder/rivet)**
+Written for the **[rivet](https://github.com/safewords/rivet)**
 transcoder, where it replaces the `image` crate's WebP support and
 libwebp. Usable on its own by anything that has WebP bytes and wants RGBA,
 or RGBA and wants WebP.
@@ -21,7 +21,7 @@ dependency (rivet-vp8), no features, no build script, no `unsafe`.
 
 ```toml
 [dependencies]
-webp = { package = "rivet-webp", git = "https://github.com/rivet-transcoder/rivet-webp", branch = "develop" }
+webp = { package = "rivet-webp", git = "https://github.com/safewords/rivet-webp", branch = "develop" }
 ```
 
 ## Use
