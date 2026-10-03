@@ -105,7 +105,7 @@ In total, effort 4 is **73.0% of PNG** (4 735 324 against 6 484 431 bytes);
 effort 0 is 81.7%, effort 6 72.7%. Effort 4 encodes about 2 to 2.5
 megapixels a second on these photographs, effort 0 about 25.
 The gallery_* images are JPEG-derived photographs, where no lossless coder
-does much; the gallery3 graphics with alpha come out 27-32% smaller than
+does much; the gallery3 graphics with alpha come out 26-32% smaller than
 PNG.
 
 For a sense of distance from libwebp's own encoder, the gallery publishes
