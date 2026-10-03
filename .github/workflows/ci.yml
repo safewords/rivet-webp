@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: tests (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux x86-64,   os: ubuntu-latest }
+          - { name: linux arm64,    os: ubuntu-24.04-arm }
+          - { name: windows x86-64, os: windows-latest }
+          - { name: macos arm64,    os: macos-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests
+        run: cargo test --release
+      - name: Robustness with overflow checks (debug)
+        run: cargo test --test robustness
+
+  # The decoder against Google's public WebP test files and their reference
+  # outputs, and the encoder round-tripped over the gallery's natural images.
+  # The data is Google's and not in the repository: this job fetches it
+  # (~30 MB, every file checked against tools/testdata.sha256).
+  conformance:
+    name: Google's WebP test data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: testdata
+          key: webp-testdata-${{ hashFiles('tools/testdata.sha256') }}
+      - name: Fetch the test data
+        run: python3 tools/fetch_testdata.py testdata
+      - name: Conformance
+        run: cargo test --release --test conformance -- --nocapture
+        env:
+          WEBP_TESTDATA_DIR: testdata
+      - name: Round trips and compression over natural images
+        run: cargo test --release --test roundtrip -- --nocapture
+        env:
+          WEBP_TESTDATA_DIR: testdata
+      - name: Mutated test files
+        run: cargo test --release --test robustness mutated
+        env:
+          WEBP_TESTDATA_DIR: testdata
+
+  msrv:
+    name: MSRV (1.99)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.99
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+
+  lint:
+    name: clippy and rustdoc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
