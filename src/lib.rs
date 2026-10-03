@@ -27,6 +27,14 @@
 //! Lossy pictures convert from and to Y'CbCr with BT.601 (RFC 9649
 //! section 2.5).
 //!
+//! ```
+//! # fn main() -> webp::Result<()> {
+//! let rgba: Vec<u8> = (0..64 * 48).flat_map(|i| [(i % 64) as u8 * 4, (i / 64) as u8 * 5, 90, 255]).collect();
+//! let image = webp::Image::new(64, 48, rgba)?;
+//! let file = webp::encode(&image, &webp::EncoderConfig::lossless())?;
+//! assert_eq!(webp::decode(&file)?, image);
+//! # Ok(()) }
+//! ```
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -34,20 +42,17 @@
 #![allow(clippy::needless_range_loop)]
 
 mod alpha;
-#[allow(dead_code)]
 mod bits;
-#[allow(dead_code)]
 mod container;
 mod decoder;
+mod encoder;
 mod error;
-#[allow(dead_code)]
 mod huffman;
-#[allow(dead_code)]
 mod lossless;
-#[allow(dead_code)]
 mod lossy;
 
 pub use decoder::{DecodeOptions, Decoder, Format, Frame, Frames, Info, UnknownChunk};
+pub use encoder::{AnimationEncoder, AnimationOptions, EncoderConfig, encode};
 pub use error::{Error, Result};
 
 /// An RGBA picture: 8 bits a channel, not premultiplied, rows top to
