@@ -2,6 +2,9 @@
 //! encoder, and what they share.
 
 pub(crate) mod decode;
+pub(crate) mod encode;
+mod histogram;
+mod lz77;
 pub(crate) mod transform;
 
 /// The signature byte that opens a VP8L bitstream (section 3.4).

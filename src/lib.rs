@@ -33,16 +33,18 @@
 // Pixel loops index several arrays at once; index loops say that plainly.
 #![allow(clippy::needless_range_loop)]
 
-#[allow(dead_code)]
 mod alpha;
 #[allow(dead_code)]
 mod bits;
+#[allow(dead_code)]
 mod container;
 mod decoder;
 mod error;
 #[allow(dead_code)]
 mod huffman;
+#[allow(dead_code)]
 mod lossless;
+#[allow(dead_code)]
 mod lossy;
 
 pub use decoder::{DecodeOptions, Decoder, Format, Frame, Frames, Info, UnknownChunk};

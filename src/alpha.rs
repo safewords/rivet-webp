@@ -107,6 +107,31 @@ pub(crate) fn filter(a: &[u8], width: usize, height: usize, filter: u8) -> Vec<u
     out
 }
 
+/// Encodes an alpha plane as an `ALPH` payload: each filter `effort`
+/// allows is tried with lossless compression, and raw storage too; the
+/// smallest wins.
+pub(crate) fn encode(a: &[u8], width: usize, height: usize, effort: u8) -> Vec<u8> {
+    let filters: &[u8] = match effort {
+        0 => &[0],
+        1..=2 => &[0, 3],
+        _ => &[0, 1, 2, 3],
+    };
+    let mut best: Vec<u8> = Vec::with_capacity(a.len() + 1);
+    best.push(AlphaHeader { compression: 0, filter: 0, preprocessing: 0 }.byte());
+    best.extend_from_slice(a);
+    for &f in filters {
+        let filtered = filter(a, width, height, f);
+        let argb: Vec<u32> = filtered.iter().map(|&v| 0xff000000 | (u32::from(v) << 8)).collect();
+        let stream = lossless::encode::encode_headerless(&argb, width, height, effort, true);
+        if stream.len() + 1 < best.len() {
+            best.clear();
+            best.push(AlphaHeader { compression: 1, filter: f, preprocessing: 0 }.byte());
+            best.extend_from_slice(&stream);
+        }
+    }
+    best
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

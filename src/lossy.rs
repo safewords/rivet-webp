@@ -100,7 +100,6 @@ const VG: i32 = -24103;
 const VB: i32 = -4681;
 
 /// RGBA to a 4:2:0 frame; alpha is ignored here (it travels in ALPH).
-#[allow(dead_code)]
 pub(crate) fn rgba_to_yuv(rgba: &[u8], width: u32, height: u32) -> Result<vp8::Frame> {
     let (w, h) = (width as usize, height as usize);
     let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
@@ -141,14 +140,12 @@ pub(crate) fn rgba_to_yuv(rgba: &[u8], width: u32, height: u32) -> Result<vp8::F
 /// The VP8 quantiser index (0 finest .. 127 coarsest) for a quality of
 /// 1..=100: `127 * (1 - q/100)^0.85`, rounded. This crate's own curve; it
 /// puts quality 80 at index 32 and 50 at index 70.
-#[allow(dead_code)]
 pub(crate) fn quantizer_for(quality: u8) -> u8 {
     let q = f64::from(quality.clamp(1, 100)) / 100.0;
     (127.0 * (1.0 - q).powf(0.85)).round().clamp(0.0, 127.0) as u8
 }
 
 /// Encodes RGBA as a `VP8 ` payload (a key frame).
-#[allow(dead_code)]
 pub(crate) fn encode(rgba: &[u8], width: u32, height: u32, quality: u8) -> Result<Vec<u8>> {
     let frame = rgba_to_yuv(rgba, width, height)?;
     let mut enc = vp8::Encoder::new(vp8::Config {

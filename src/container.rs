@@ -95,12 +95,9 @@ pub(crate) struct Parsed<'a> {
     pub(crate) unknown: Vec<Chunk<'a>>,
 }
 
-#[allow(dead_code)]
 pub(crate) const FLAG_ICC: u8 = 0x20;
 pub(crate) const FLAG_ALPHA: u8 = 0x10;
-#[allow(dead_code)]
 pub(crate) const FLAG_EXIF: u8 = 0x08;
-#[allow(dead_code)]
 pub(crate) const FLAG_XMP: u8 = 0x04;
 pub(crate) const FLAG_ANIMATION: u8 = 0x02;
 
@@ -363,7 +360,6 @@ fn frame(d: &[u8], canvas_w: u32, canvas_h: u32) -> Result<FrameRef<'_>> {
 }
 
 /// Appends a chunk (header, payload, padding) to `out`.
-#[allow(dead_code)]
 pub(crate) fn write_chunk(out: &mut Vec<u8>, fourcc: &[u8; 4], payload: &[u8]) {
     out.extend_from_slice(fourcc);
     out.extend_from_slice(&(payload.len() as u32).to_le_bytes());
@@ -374,7 +370,6 @@ pub(crate) fn write_chunk(out: &mut Vec<u8>, fourcc: &[u8; 4], payload: &[u8]) {
 }
 
 /// Wraps chunk bytes in the RIFF/WEBP header.
-#[allow(dead_code)]
 pub(crate) fn riff(body: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(body.len() + 12);
     out.extend_from_slice(b"RIFF");
@@ -385,7 +380,6 @@ pub(crate) fn riff(body: &[u8]) -> Vec<u8> {
 }
 
 /// A VP8X payload.
-#[allow(dead_code)]
 pub(crate) fn vp8x(flags: u8, width: u32, height: u32) -> [u8; 10] {
     let mut v = [0u8; 10];
     v[0] = flags;
