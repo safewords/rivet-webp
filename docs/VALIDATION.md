@@ -88,20 +88,22 @@ effort. Encode times are single-threaded.
 
 | image | size | alpha | PNG -9 | WebP e0 | e4 | e6 | e4 / PNG | e4 ms |
 |---|---|---|---|---|---|---|---|---|
-| gallery3_1.png | 400x301 | yes | 124358 | 99160 | 90484 | 89154 | 72.8% | 31 |
-| gallery3_2.png | 386x395 | yes | 44605 | 42920 | 31304 | 30692 | 70.2% | 41 |
-| gallery3_3.png | 800x600 | yes | 241159 | 201414 | 163032 | 161486 | 67.6% | 76 |
-| gallery3_4.png | 421x163 | yes | 52856 | 40610 | 37410 | 37138 | 70.8% | 20 |
+| gallery3_1.png | 400x301 | yes | 124358 | 99160 | 90010 | 89154 | 72.4% | 27 |
+| gallery3_2.png | 386x395 | yes | 44605 | 42920 | 31344 | 30692 | 70.3% | 43 |
+| gallery3_3.png | 800x600 | yes | 241159 | 201414 | 163944 | 161486 | 68.0% | 81 |
+| gallery3_4.png | 421x163 | yes | 52856 | 40610 | 37410 | 37138 | 70.8% | 19 |
 | gallery3_5.png | 300x300 | yes | 139109 | 135922 | 103262 | 102970 | 74.2% | 39 |
 | gallery_1.png | 550x368 | no | 385320 | 349102 | 309494 | 306850 | 80.3% | 67 |
-| gallery_2.png | 550x404 | no | 553971 | 442780 | 416946 | 415084 | 75.3% | 75 |
-| gallery_3.png | 1280x720 | no | 1974612 | 1337318 | 1229418 | 1218456 | 62.3% | 509 |
-| gallery_4.png | 1024x772 | no | 1743807 | 1540862 | 1404942 | 1404248 | 80.6% | 387 |
-| gallery_5.png | 1024x752 | no | 1198446 | 1096708 | 938158 | 935098 | 78.3% | 458 |
-| peak.png | 128x128 | no | 26098 | 13208 | 10368 | 10360 | 39.7% | 17 |
-| grid.png | 16x16 | yes | 90 | 44 | 46 | 46 | 51.1% | 1 |
+| gallery_2.png | 550x404 | no | 553971 | 442780 | 416928 | 415084 | 75.3% | 61 |
+| gallery_3.png | 1280x720 | no | 1974612 | 1337318 | 1229418 | 1218456 | 62.3% | 476 |
+| gallery_4.png | 1024x772 | no | 1743807 | 1540862 | 1404942 | 1404248 | 80.6% | 409 |
+| gallery_5.png | 1024x752 | no | 1198446 | 1096708 | 938158 | 935098 | 78.3% | 431 |
+| peak.png | 128x128 | no | 26098 | 13208 | 10368 | 10360 | 39.7% | 14 |
+| grid.png | 16x16 | yes | 90 | 44 | 46 | 46 | 51.1% | 2 |
 
-In total, effort 4 is **73.0% of PNG** (4 734 864 against 6 484 431 bytes).
+In total, effort 4 is **73.0% of PNG** (4 735 324 against 6 484 431 bytes);
+effort 0 is 81.7%, effort 6 72.7%. Effort 4 encodes about 2 to 2.5
+megapixels a second on these photographs, effort 0 about 25.
 The gallery_* images are JPEG-derived photographs, where no lossless coder
 does much; the gallery3 graphics with alpha come out 27-32% smaller than
 PNG.

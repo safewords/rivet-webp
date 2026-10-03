@@ -419,8 +419,10 @@ fn write_coded_image(bw: &mut BitWriter, px: &[u32], width: usize, height: usize
     let coder = DistanceCoder::new(width);
     let params = MatchParams::for_effort(effort);
     let mut tokens = backward_references(px, width, &params, &coder, None);
-    if effort >= 3 && px.len() > 64 {
-        // A second pass priced by the first one's statistics.
+    let copied: usize = tokens.iter().map(|t| if let Token::Copy { len, .. } = t { *len as usize } else { 0 }).sum();
+    // A second pass priced by the first one's statistics, where copies are
+    // common enough for their pricing to matter.
+    if effort >= 3 && px.len() > 64 && (effort >= 5 || copied * 20 >= px.len()) {
         let stats = |t: &[Token]| {
             let mut h = Histogram::new(0);
             for x in t {

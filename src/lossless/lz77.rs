@@ -43,6 +43,8 @@ pub(crate) struct MatchParams {
     pub(crate) chain: usize,
     /// Try the next position before taking a match shorter than this.
     pub(crate) lazy_below: usize,
+    /// Stop searching a chain once a match this long is found.
+    pub(crate) nice: usize,
 }
 
 impl MatchParams {
@@ -59,6 +61,12 @@ impl MatchParams {
         MatchParams {
             chain,
             lazy_below: if effort == 0 { 0 } else { 64 },
+            nice: match effort {
+                0..=3 => 64,
+                4 => 128,
+                5 => 512,
+                _ => MAX_LENGTH,
+            },
         }
     }
 }
@@ -161,6 +169,7 @@ struct Finder<'a> {
     head: Vec<u32>,
     prev: Vec<u32>,
     chain: usize,
+    nice: usize,
     coder: &'a DistanceCoder,
     model: Option<&'a CostModel>,
 }
@@ -240,7 +249,7 @@ impl Finder<'_> {
                 let probe = best.len.min(max - 1);
                 if self.px[c + probe] == self.px[i + probe] {
                     consider(match_len(self.px, i, c, max), dist, &mut best);
-                    if best.len == max {
+                    if best.len >= self.nice.min(max) {
                         break;
                     }
                 }
@@ -263,6 +272,7 @@ pub(crate) fn backward_references(px: &[u32], width: usize, params: &MatchParams
         head: if params.chain > 0 { vec![NONE; 1 << HASH_BITS] } else { Vec::new() },
         prev: if params.chain > 0 { vec![NONE; n] } else { Vec::new() },
         chain: params.chain,
+        nice: params.nice,
         coder,
         model,
     };
