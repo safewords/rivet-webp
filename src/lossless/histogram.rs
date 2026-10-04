@@ -15,7 +15,11 @@ pub(crate) struct Histogram {
 
 impl Histogram {
     pub(crate) fn new(cache_bits: u32) -> Self {
-        let cache = if cache_bits > 0 { 1usize << cache_bits } else { 0 };
+        let cache = if cache_bits > 0 {
+            1usize << cache_bits
+        } else {
+            0
+        };
         Histogram {
             codes: [
                 vec![0; NUM_LITERALS + NUM_LENGTH_CODES + cache],
@@ -130,7 +134,11 @@ fn finish_cost(total: u64, sum: f64, used: u32) -> f64 {
         2 => 20.0,
         n => 30.0 + 3.5 * f64::from(n),
     };
-    let data = if total == 0 || used <= 1 { 0.0 } else { nlog2n(total.min(u64::from(u32::MAX)) as u32) - sum };
+    let data = if total == 0 || used <= 1 {
+        0.0
+    } else {
+        nlog2n(total.min(u64::from(u32::MAX)) as u32) - sum
+    };
     data + header
 }
 

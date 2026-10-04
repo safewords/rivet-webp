@@ -73,7 +73,6 @@ pub struct DecodeOptions {
     pub use_background: bool,
 }
 
-
 /// A composited animation frame: the whole canvas as shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Frame {
@@ -123,7 +122,11 @@ impl<'a> Decoder<'a> {
     /// What the file holds.
     pub fn info(&self) -> Info {
         let p = &self.parsed;
-        let lossy = p.frames.iter().filter(|f| matches!(f.bitstream, Bitstream::Lossy(_))).count();
+        let lossy = p
+            .frames
+            .iter()
+            .filter(|f| matches!(f.bitstream, Bitstream::Lossy(_)))
+            .count();
         let format = if lossy == p.frames.len() {
             Format::Lossy
         } else if lossy == 0 {
@@ -135,18 +138,27 @@ impl<'a> Decoder<'a> {
             background_bgra: [0; 4],
             loop_count: 1,
         });
-        let [b, g, r, a] = if p.animated { anim.background_bgra } else { [0; 4] };
+        let [b, g, r, a] = if p.animated {
+            anim.background_bgra
+        } else {
+            [0; 4]
+        };
         let frame_alpha = p.frames.iter().any(|f| {
             f.alpha.is_some()
                 || match f.bitstream {
-                    Bitstream::Lossless(d) => lossless::decode::read_header(d).is_ok_and(|h| h.alpha_hint),
+                    Bitstream::Lossless(d) => {
+                        lossless::decode::read_header(d).is_ok_and(|h| h.alpha_hint)
+                    }
                     Bitstream::Lossy(_) => false,
                 }
         });
         Info {
             width: p.width,
             height: p.height,
-            has_alpha: p.flags & container::FLAG_ALPHA != 0 || frame_alpha || (p.animated && a != 255) || frames_leave_gaps(p),
+            has_alpha: p.flags & container::FLAG_ALPHA != 0
+                || frame_alpha
+                || (p.animated && a != 255)
+                || frames_leave_gaps(p),
             animated: p.animated,
             frame_count: p.frames.len(),
             loop_count: if p.animated { anim.loop_count } else { 1 },
@@ -202,7 +214,11 @@ impl<'a> Decoder<'a> {
 /// Whether some canvas pixel is never covered by a frame, so shows the
 /// (transparent) background.
 fn frames_leave_gaps(p: &Parsed<'_>) -> bool {
-    p.animated && !p.frames.iter().any(|f| f.x == 0 && f.y == 0 && f.width == p.width && f.height == p.height)
+    p.animated
+        && !p
+            .frames
+            .iter()
+            .any(|f| f.x == 0 && f.y == 0 && f.width == p.width && f.height == p.height)
 }
 
 /// One frame's pixels, RGBA, at the frame's own size.
@@ -250,7 +266,11 @@ impl Iterator for Frames<'_, '_> {
         let p = &self.dec.parsed;
         let f = p.frames.get(self.next)?;
         let r = self.step(f);
-        self.next = if r.is_err() { usize::MAX } else { self.next + 1 };
+        self.next = if r.is_err() {
+            usize::MAX
+        } else {
+            self.next + 1
+        };
         Some(r)
     }
 
@@ -288,7 +308,12 @@ impl Frames<'_, '_> {
             && prev.dispose
         {
             for y in prev.y as usize..(prev.y + prev.height) as usize {
-                for px in self.canvas[(y * cw + prev.x as usize) * 4..(y * cw + (prev.x + prev.width) as usize) * 4].as_chunks_mut::<4>().0.iter_mut() {
+                for px in self.canvas
+                    [(y * cw + prev.x as usize) * 4..(y * cw + (prev.x + prev.width) as usize) * 4]
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                {
                     px.copy_from_slice(&bg);
                 }
             }
@@ -300,7 +325,12 @@ impl Frames<'_, '_> {
             let at = ((f.y as usize + y) * cw + f.x as usize) * 4;
             let dst = &mut self.canvas[at..at + fw * 4];
             if f.blend {
-                for (d, s) in dst.as_chunks_mut::<4>().0.iter_mut().zip(src.as_chunks::<4>().0.iter()) {
+                for (d, s) in dst
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .zip(src.as_chunks::<4>().0.iter())
+                {
                     blend(d, s);
                 }
             } else {

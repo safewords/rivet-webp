@@ -1,9 +1,9 @@
 //! The RIFF container (RFC 9649 section 2): reading a file into its frames
 //! and metadata without decoding any pixels, and writing chunks.
 
+use crate::Limits;
 use crate::error::{Result, bitstream, limit};
 use crate::lossless;
-use crate::Limits;
 
 /// One chunk: its FourCC and payload (padding excluded).
 #[derive(Clone, Copy, Debug)]
@@ -41,7 +41,15 @@ pub(crate) fn chunks(body: &[u8]) -> Result<Vec<Chunk<'_>>> {
 
 /// A FourCC for messages.
 pub(crate) fn fourcc_name(f: &[u8; 4]) -> String {
-    f.iter().map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '?' }).collect()
+    f.iter()
+        .map(|&b| {
+            if b.is_ascii_graphic() || b == b' ' {
+                b as char
+            } else {
+                '?'
+            }
+        })
+        .collect()
 }
 
 /// A frame's coded image.
@@ -112,7 +120,9 @@ pub(crate) fn vp8_dimensions(data: &[u8]) -> Result<(u32, u32)> {
         return Err(bitstream("VP8 frame shorter than a key frame header"));
     }
     if data[0] & 1 != 0 {
-        return Err(bitstream("VP8 chunk holds an inter frame; a WebP image is a key frame"));
+        return Err(bitstream(
+            "VP8 chunk holds an inter frame; a WebP image is a key frame",
+        ));
     }
     if data[3..6] != [0x9d, 0x01, 0x2a] {
         return Err(bitstream("VP8 key frame without its start code"));
@@ -168,7 +178,11 @@ pub(crate) fn parse<'a>(data: &'a [u8], limits: &Limits) -> Result<Parsed<'a>> {
     };
     match &first.fourcc {
         b"VP8 " | b"VP8L" => {
-            let bs = if &first.fourcc == b"VP8 " { Bitstream::Lossy(first.data) } else { Bitstream::Lossless(first.data) };
+            let bs = if &first.fourcc == b"VP8 " {
+                Bitstream::Lossy(first.data)
+            } else {
+                Bitstream::Lossless(first.data)
+            };
             let (w, h) = bitstream_dimensions(&bs)?;
             check_canvas(w, h, limits)?;
             p.width = w;
@@ -179,7 +193,10 @@ pub(crate) fn parse<'a>(data: &'a [u8], limits: &Limits) -> Result<Parsed<'a>> {
         }
         b"VP8X" => {}
         other => {
-            return Err(bitstream(format!("WebP file starting with chunk '{}'", fourcc_name(other))));
+            return Err(bitstream(format!(
+                "WebP file starting with chunk '{}'",
+                fourcc_name(other)
+            )));
         }
     }
     let x = first.data;
@@ -192,7 +209,10 @@ pub(crate) fn parse<'a>(data: &'a [u8], limits: &Limits) -> Result<Parsed<'a>> {
     p.width = u24(&x[4..7]) + 1;
     p.height = u24(&x[7..10]) + 1;
     if u64::from(p.width) * u64::from(p.height) > u64::from(u32::MAX) {
-        return Err(bitstream(format!("canvas {}x{} has more than 2^32 - 1 pixels", p.width, p.height)));
+        return Err(bitstream(format!(
+            "canvas {}x{} has more than 2^32 - 1 pixels",
+            p.width, p.height
+        )));
     }
     check_canvas(p.width, p.height, limits)?;
 
@@ -246,7 +266,11 @@ pub(crate) fn parse<'a>(data: &'a [u8], limits: &Limits) -> Result<Parsed<'a>> {
             b"VP8 " | b"VP8L" if !p.animated => {
                 order(3, "image data")?;
                 if image.is_none() {
-                    image = Some(if &c.fourcc == b"VP8 " { Bitstream::Lossy(c.data) } else { Bitstream::Lossless(c.data) });
+                    image = Some(if &c.fourcc == b"VP8 " {
+                        Bitstream::Lossy(c.data)
+                    } else {
+                        Bitstream::Lossless(c.data)
+                    });
                 }
             }
             b"EXIF" => {
@@ -275,11 +299,18 @@ pub(crate) fn parse<'a>(data: &'a [u8], limits: &Limits) -> Result<Parsed<'a>> {
         };
         let (w, h) = bitstream_dimensions(&bs)?;
         if (w, h) != (p.width, p.height) {
-            return Err(bitstream(format!("image is {w}x{h} on a {}x{} canvas", p.width, p.height)));
+            return Err(bitstream(format!(
+                "image is {w}x{h} on a {}x{} canvas",
+                p.width, p.height
+            )));
         }
         // An ALPH chunk belongs to a lossy image; a lossless one carries
         // its own alpha (section 2.7.1.2).
-        let alpha = if matches!(bs, Bitstream::Lossy(_)) { alpha } else { None };
+        let alpha = if matches!(bs, Bitstream::Lossy(_)) {
+            alpha
+        } else {
+            None
+        };
         p.frames.push(still(w, h, alpha, bs));
     }
     Ok(p)
@@ -302,7 +333,10 @@ fn still<'a>(w: u32, h: u32, alpha: Option<&'a [u8]>, bitstream: Bitstream<'a>) 
 fn check_canvas(w: u32, h: u32, limits: &Limits) -> Result<()> {
     let pixels = u64::from(w) * u64::from(h);
     if pixels > limits.max_pixels {
-        return Err(limit(format!("{w}x{h} is {pixels} pixels, the limit is {}", limits.max_pixels)));
+        return Err(limit(format!(
+            "{w}x{h} is {pixels} pixels, the limit is {}",
+            limits.max_pixels
+        )));
     }
     Ok(())
 }
@@ -318,7 +352,9 @@ fn frame(d: &[u8], canvas_w: u32, canvas_h: u32) -> Result<FrameRef<'_>> {
     let height = u24(&d[9..12]) + 1;
     let duration = u24(&d[12..15]);
     let flags = d[15];
-    if u64::from(x) + u64::from(width) > u64::from(canvas_w) || u64::from(y) + u64::from(height) > u64::from(canvas_h) {
+    if u64::from(x) + u64::from(width) > u64::from(canvas_w)
+        || u64::from(y) + u64::from(height) > u64::from(canvas_h)
+    {
         return Err(bitstream(format!(
             "frame {width}x{height} at ({x}, {y}) does not fit the {canvas_w}x{canvas_h} canvas"
         )));
@@ -343,9 +379,15 @@ fn frame(d: &[u8], canvas_w: u32, canvas_h: u32) -> Result<FrameRef<'_>> {
     };
     let (w, h) = bitstream_dimensions(&bs)?;
     if (w, h) != (width, height) {
-        return Err(bitstream(format!("frame image is {w}x{h}, its ANMF header says {width}x{height}")));
+        return Err(bitstream(format!(
+            "frame image is {w}x{h}, its ANMF header says {width}x{height}"
+        )));
     }
-    let alpha = if matches!(bs, Bitstream::Lossy(_)) { alpha } else { None };
+    let alpha = if matches!(bs, Bitstream::Lossy(_)) {
+        alpha
+    } else {
+        None
+    };
     Ok(FrameRef {
         x,
         y,

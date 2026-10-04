@@ -26,7 +26,9 @@ pub(crate) const PLANE_CODES: usize = 120;
 
 /// The order in which code length code lengths are sent (section
 /// 3.7.2.1.2).
-pub(crate) const CODE_LENGTH_ORDER: [usize; 19] = [17, 18, 0, 1, 2, 3, 4, 5, 16, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+pub(crate) const CODE_LENGTH_ORDER: [usize; 19] = [
+    17, 18, 0, 1, 2, 3, 4, 5, 16, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+];
 
 /// The colour cache's hash multiplier (section 3.6.2.3).
 pub(crate) const CACHE_MULTIPLIER: u32 = 0x1e35a7bd;
@@ -39,6 +41,7 @@ pub(crate) fn cache_index(argb: u32, bits: u32) -> usize {
 
 /// Distance codes 1..=120: (xi, yi), the neighbour xi columns to the left
 /// (negative: to the right) and yi rows up (section 3.6.2.2.1, figure 20).
+#[rustfmt::skip]
 pub(crate) const DISTANCE_MAP: [(i8, i8); PLANE_CODES] = [
     (0, 1), (1, 0), (1, 1), (-1, 1), (0, 2), (2, 0), (1, 2),
     (-1, 2), (2, 1), (-2, 1), (2, 2), (-2, 2), (0, 3), (3, 0),
@@ -85,7 +88,11 @@ pub(crate) fn prefix_encode(value: usize) -> (usize, u32, u32) {
     let high = 31 - d.leading_zeros();
     let second = (d >> (high - 1)) & 1;
     let extra_bits = high - 1;
-    ((2 * high + second) as usize, extra_bits, d & ((1 << extra_bits) - 1))
+    (
+        (2 * high + second) as usize,
+        extra_bits,
+        d & ((1 << extra_bits) - 1),
+    )
 }
 
 /// The base value of a prefix code and its number of extra bits: the

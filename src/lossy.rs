@@ -16,7 +16,9 @@ use crate::error::{Result, bitstream};
 /// alpha bytes are set to 255).
 pub(crate) fn decode(data: &[u8], width: u32, height: u32) -> Result<Vec<u8>> {
     let mut dec = vp8::Decoder::new();
-    let frame = dec.decode(data)?.ok_or_else(|| bitstream("VP8 frame marked not to be shown"))?;
+    let frame = dec
+        .decode(data)?
+        .ok_or_else(|| bitstream("VP8 frame marked not to be shown"))?;
     if (frame.width, frame.height) != (width, height) {
         return Err(bitstream(format!(
             "VP8 frame decoded at {}x{}, expected {width}x{height}",
@@ -67,7 +69,11 @@ pub(crate) fn yuv_to_rgba(f: &vp8::Frame) -> Vec<u8> {
     let mut vrow = vec![0i32; cw];
     for y in 0..h {
         let near = y >> 1;
-        let far = if y & 1 == 0 { near.saturating_sub(1) } else { (near + 1).min(ch - 1) };
+        let far = if y & 1 == 0 {
+            near.saturating_sub(1)
+        } else {
+            (near + 1).min(ch - 1)
+        };
         for i in 0..cw {
             urow[i] = 3 * i32::from(up[near * cw + i]) + i32::from(up[far * cw + i]);
             vrow[i] = 3 * i32::from(vp[near * cw + i]) + i32::from(vp[far * cw + i]);
@@ -76,7 +82,11 @@ pub(crate) fn yuv_to_rgba(f: &vp8::Frame) -> Vec<u8> {
         let orow = &mut out[y * w * 4..(y + 1) * w * 4];
         for x in 0..w {
             let n = x >> 1;
-            let fx = if x & 1 == 0 { n.saturating_sub(1) } else { (n + 1).min(cw - 1) };
+            let fx = if x & 1 == 0 {
+                n.saturating_sub(1)
+            } else {
+                (n + 1).min(cw - 1)
+            };
             let u = 3 * urow[n] + urow[fx];
             let v = 3 * vrow[n] + vrow[fx];
             let [r, g, b] = rgb(yr[x], u, v);
@@ -164,13 +174,26 @@ mod tests {
 
     #[test]
     fn grey_and_primaries_survive_the_matrices() {
-        for (r, g, b) in [(0u8, 0u8, 0u8), (255, 255, 255), (128, 128, 128), (255, 0, 0), (0, 255, 0), (0, 0, 255), (12, 200, 99)] {
+        for (r, g, b) in [
+            (0u8, 0u8, 0u8),
+            (255, 255, 255),
+            (128, 128, 128),
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+            (12, 200, 99),
+        ] {
             let rgba: Vec<u8> = (0..4).flat_map(|_| [r, g, b, 255]).collect();
             let f = rgba_to_yuv(&rgba, 2, 2).unwrap();
             let back = yuv_to_rgba(&f);
             for k in 0..3 {
                 let want = [r, g, b][k];
-                assert!((i32::from(back[k]) - i32::from(want)).abs() <= 2, "{:?} -> {:?}", (r, g, b), &back[..4]);
+                assert!(
+                    (i32::from(back[k]) - i32::from(want)).abs() <= 2,
+                    "{:?} -> {:?}",
+                    (r, g, b),
+                    &back[..4]
+                );
             }
         }
     }

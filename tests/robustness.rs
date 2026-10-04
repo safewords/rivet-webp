@@ -4,7 +4,9 @@
 //! one rule each. Run in debug too (`cargo test --test robustness`), where
 //! arithmetic overflow panics.
 
-use webp::{AnimationEncoder, AnimationOptions, DecodeOptions, Decoder, EncoderConfig, Error, Image, Limits};
+use webp::{
+    AnimationEncoder, AnimationOptions, DecodeOptions, Decoder, EncoderConfig, Error, Image, Limits,
+};
 
 fn image(w: u32, h: u32, f: impl Fn(u32, u32) -> [u8; 4]) -> Image {
     let mut rgba = Vec::new();
@@ -19,10 +21,28 @@ fn image(w: u32, h: u32, f: impl Fn(u32, u32) -> [u8; 4]) -> Image {
 /// Files that between them use every chunk and lossless feature the
 /// encoder writes.
 fn samples() -> Vec<(&'static str, Vec<u8>)> {
-    let grad = image(48, 40, |x, y| [(x * 5) as u8, (y * 6) as u8, ((x * y) % 256) as u8, if (x + y) % 9 == 0 { 0 } else { 255 }]);
-    let pal = image(37, 29, |x, y| [((x / 4 + y / 3) % 3 * 100) as u8, 50, 9, 255]);
+    let grad = image(48, 40, |x, y| {
+        [
+            (x * 5) as u8,
+            (y * 6) as u8,
+            ((x * y) % 256) as u8,
+            if (x + y) % 9 == 0 { 0 } else { 255 },
+        ]
+    });
+    let pal = image(37, 29, |x, y| {
+        [((x / 4 + y / 3) % 3 * 100) as u8, 50, 9, 255]
+    });
     let big = image(130, 100, |x, y| {
-        if x < 65 { [(x * 3) as u8, y as u8, 0, 255] } else { [((x * 7919 + y * 104_729) % 251) as u8, ((x ^ y) * 13) as u8, 77, 255] }
+        if x < 65 {
+            [(x * 3) as u8, y as u8, 0, 255]
+        } else {
+            [
+                ((x * 7919 + y * 104_729) % 251) as u8,
+                ((x ^ y) * 13) as u8,
+                77,
+                255,
+            ]
+        }
     });
     let meta = EncoderConfig {
         icc_profile: Some(vec![7; 33]),
@@ -31,19 +51,70 @@ fn samples() -> Vec<(&'static str, Vec<u8>)> {
         ..EncoderConfig::lossless()
     };
     let mut out = vec![
-        ("lossless gradient+alpha", webp::encode(&grad, &EncoderConfig::lossless()).unwrap()),
-        ("lossless palette", webp::encode(&pal, &EncoderConfig::lossless()).unwrap()),
-        ("lossless meta codes", webp::encode(&big, &EncoderConfig { effort: 6, ..EncoderConfig::lossless() }).unwrap()),
-        ("lossless with metadata", webp::encode(&grad, &meta).unwrap()),
-        ("lossy with alpha", webp::encode(&grad, &EncoderConfig::lossy(60)).unwrap()),
-        ("lossy opaque", webp::encode(&pal, &EncoderConfig::lossy(60)).unwrap()),
+        (
+            "lossless gradient+alpha",
+            webp::encode(&grad, &EncoderConfig::lossless()).unwrap(),
+        ),
+        (
+            "lossless palette",
+            webp::encode(&pal, &EncoderConfig::lossless()).unwrap(),
+        ),
+        (
+            "lossless meta codes",
+            webp::encode(
+                &big,
+                &EncoderConfig {
+                    effort: 6,
+                    ..EncoderConfig::lossless()
+                },
+            )
+            .unwrap(),
+        ),
+        (
+            "lossless with metadata",
+            webp::encode(&grad, &meta).unwrap(),
+        ),
+        (
+            "lossy with alpha",
+            webp::encode(&grad, &EncoderConfig::lossy(60)).unwrap(),
+        ),
+        (
+            "lossy opaque",
+            webp::encode(&pal, &EncoderConfig::lossy(60)).unwrap(),
+        ),
     ];
     for lossless in [true, false] {
-        let mut enc = AnimationEncoder::new(48, 40, EncoderConfig { lossless, ..Default::default() }, AnimationOptions::default()).unwrap();
+        let mut enc = AnimationEncoder::new(
+            48,
+            40,
+            EncoderConfig {
+                lossless,
+                ..Default::default()
+            },
+            AnimationOptions::default(),
+        )
+        .unwrap();
         for t in 0..3u32 {
-            enc.add_frame(&image(48, 40, |x, y| if x / 8 == t { [255, 0, 0, 255] } else { [(x * 5) as u8, (y * 6) as u8, 40, 200] }), 50).unwrap();
+            enc.add_frame(
+                &image(48, 40, |x, y| {
+                    if x / 8 == t {
+                        [255, 0, 0, 255]
+                    } else {
+                        [(x * 5) as u8, (y * 6) as u8, 40, 200]
+                    }
+                }),
+                50,
+            )
+            .unwrap();
         }
-        out.push((if lossless { "lossless animation" } else { "lossy animation" }, enc.finish().unwrap()));
+        out.push((
+            if lossless {
+                "lossless animation"
+            } else {
+                "lossy animation"
+            },
+            enc.finish().unwrap(),
+        ));
     }
     out
 }
@@ -164,14 +235,32 @@ fn sizes_over_the_limits_are_refused_before_decoding() {
     let file = riff(&[(b"VP8X", x), (b"VP8L", vp8l_header(1, 1))]);
     assert!(Decoder::new(&file).is_err());
     // Too many frames.
-    let mut enc = AnimationEncoder::new(4, 4, EncoderConfig::lossless(), AnimationOptions::default()).unwrap();
+    let mut enc =
+        AnimationEncoder::new(4, 4, EncoderConfig::lossless(), AnimationOptions::default())
+            .unwrap();
     for i in 0..5u8 {
-        enc.add_frame(&image(4, 4, |_, _| [i, 0, 0, 255]), 10).unwrap();
+        enc.add_frame(&image(4, 4, |_, _| [i, 0, 0, 255]), 10)
+            .unwrap();
     }
     let file = enc.finish().unwrap();
-    let opts = DecodeOptions { limits: Limits { max_frames: 3, ..Limits::default() }, ..Default::default() };
-    assert!(matches!(Decoder::with_options(&file, opts), Err(Error::LimitExceeded(_))));
-    let opts = DecodeOptions { limits: Limits { max_animation_pixels: 40, ..Limits::default() }, ..Default::default() };
+    let opts = DecodeOptions {
+        limits: Limits {
+            max_frames: 3,
+            ..Limits::default()
+        },
+        ..Default::default()
+    };
+    assert!(matches!(
+        Decoder::with_options(&file, opts),
+        Err(Error::LimitExceeded(_))
+    ));
+    let opts = DecodeOptions {
+        limits: Limits {
+            max_animation_pixels: 40,
+            ..Limits::default()
+        },
+        ..Default::default()
+    };
     let dec = Decoder::with_options(&file, opts).unwrap();
     let results: Vec<_> = dec.frames().collect();
     assert_eq!(results.len(), 3);
@@ -180,7 +269,11 @@ fn sizes_over_the_limits_are_refused_before_decoding() {
 
 #[test]
 fn broken_rules_are_errors() {
-    let ok = webp::encode(&image(8, 8, |x, y| [x as u8 * 30, y as u8 * 30, 0, 255]), &EncoderConfig::lossless()).unwrap();
+    let ok = webp::encode(
+        &image(8, 8, |x, y| [x as u8 * 30, y as u8 * 30, 0, 255]),
+        &EncoderConfig::lossless(),
+    )
+    .unwrap();
     let vp8l = ok[20..].to_vec();
     let bad = |what: &str, file: Vec<u8>| {
         let r = Decoder::new(&file).and_then(|d| d.decode());
@@ -207,23 +300,74 @@ fn broken_rules_are_errors() {
         x[7] = 7;
         x
     };
-    bad("canvas mismatch", riff(&[(b"VP8X", x.clone()), (b"VP8L", vp8l.clone())]));
+    bad(
+        "canvas mismatch",
+        riff(&[(b"VP8X", x.clone()), (b"VP8L", vp8l.clone())]),
+    );
     // ICCP after the image data.
     let mut x8 = vec![0u8; 10];
     x8[0] = 0x20;
     x8[4] = 7;
     x8[7] = 7;
-    bad("ICCP out of order", riff(&[(b"VP8X", x8.clone()), (b"VP8L", vp8l.clone()), (b"ICCP", vec![1])]));
-    assert!(Decoder::new(&riff(&[(b"VP8X", x8.clone()), (b"ICCP", vec![1]), (b"VP8L", vp8l.clone())])).is_ok());
+    bad(
+        "ICCP out of order",
+        riff(&[
+            (b"VP8X", x8.clone()),
+            (b"VP8L", vp8l.clone()),
+            (b"ICCP", vec![1]),
+        ]),
+    );
+    assert!(
+        Decoder::new(&riff(&[
+            (b"VP8X", x8.clone()),
+            (b"ICCP", vec![1]),
+            (b"VP8L", vp8l.clone())
+        ]))
+        .is_ok()
+    );
     // ALPH after VP8.
-    let lossy = webp::encode(&image(8, 8, |_, _| [1, 2, 3, 255]), &EncoderConfig::lossy(50)).unwrap();
+    let lossy = webp::encode(
+        &image(8, 8, |_, _| [1, 2, 3, 255]),
+        &EncoderConfig::lossy(50),
+    )
+    .unwrap();
     let vp8 = lossy[20..].to_vec();
     let mut x9 = x8.clone();
     x9[0] = 0x10;
-    bad("ALPH after VP8", riff(&[(b"VP8X", x9.clone()), (b"VP8 ", vp8.clone()), (b"ALPH", vec![0; 65])]));
-    bad("ALPH compression 2", riff(&[(b"VP8X", x9.clone()), (b"ALPH", vec![2; 65]), (b"VP8 ", vp8.clone())]));
-    bad("raw ALPH too short", riff(&[(b"VP8X", x9.clone()), (b"ALPH", vec![0; 10]), (b"VP8 ", vp8.clone())]));
-    assert!(Decoder::new(&riff(&[(b"VP8X", x9.clone()), (b"ALPH", vec![0; 65]), (b"VP8 ", vp8.clone())])).unwrap().decode().is_ok());
+    bad(
+        "ALPH after VP8",
+        riff(&[
+            (b"VP8X", x9.clone()),
+            (b"VP8 ", vp8.clone()),
+            (b"ALPH", vec![0; 65]),
+        ]),
+    );
+    bad(
+        "ALPH compression 2",
+        riff(&[
+            (b"VP8X", x9.clone()),
+            (b"ALPH", vec![2; 65]),
+            (b"VP8 ", vp8.clone()),
+        ]),
+    );
+    bad(
+        "raw ALPH too short",
+        riff(&[
+            (b"VP8X", x9.clone()),
+            (b"ALPH", vec![0; 10]),
+            (b"VP8 ", vp8.clone()),
+        ]),
+    );
+    assert!(
+        Decoder::new(&riff(&[
+            (b"VP8X", x9.clone()),
+            (b"ALPH", vec![0; 65]),
+            (b"VP8 ", vp8.clone())
+        ]))
+        .unwrap()
+        .decode()
+        .is_ok()
+    );
     // An inter frame is not a WebP image.
     let mut inter = vp8.clone();
     inter[0] |= 1;
@@ -241,13 +385,43 @@ fn broken_rules_are_errors() {
     if vp8l.len() % 2 == 1 {
         anmf.push(0);
     }
-    bad("frame outside the canvas", riff(&[(b"VP8X", xa.clone()), (b"ANIM", vec![0; 6]), (b"ANMF", anmf.clone())]));
+    bad(
+        "frame outside the canvas",
+        riff(&[
+            (b"VP8X", xa.clone()),
+            (b"ANIM", vec![0; 6]),
+            (b"ANMF", anmf.clone()),
+        ]),
+    );
     let mut inside = anmf.clone();
     inside[0] = 0;
-    assert!(Decoder::new(&riff(&[(b"VP8X", xa.clone()), (b"ANIM", vec![0; 6]), (b"ANMF", inside.clone())])).unwrap().decode().is_ok());
-    bad("ANMF without ANIM", riff(&[(b"VP8X", xa.clone()), (b"ANMF", inside.clone())]));
-    bad("ANIM after ANMF", riff(&[(b"VP8X", xa.clone()), (b"ANIM", vec![0; 6]), (b"ANMF", inside.clone()), (b"ANIM", vec![0; 6])]));
-    bad("animation without frames", riff(&[(b"VP8X", xa.clone()), (b"ANIM", vec![0; 6])]));
+    assert!(
+        Decoder::new(&riff(&[
+            (b"VP8X", xa.clone()),
+            (b"ANIM", vec![0; 6]),
+            (b"ANMF", inside.clone())
+        ]))
+        .unwrap()
+        .decode()
+        .is_ok()
+    );
+    bad(
+        "ANMF without ANIM",
+        riff(&[(b"VP8X", xa.clone()), (b"ANMF", inside.clone())]),
+    );
+    bad(
+        "ANIM after ANMF",
+        riff(&[
+            (b"VP8X", xa.clone()),
+            (b"ANIM", vec![0; 6]),
+            (b"ANMF", inside.clone()),
+            (b"ANIM", vec![0; 6]),
+        ]),
+    );
+    bad(
+        "animation without frames",
+        riff(&[(b"VP8X", xa.clone()), (b"ANIM", vec![0; 6])]),
+    );
 }
 
 #[test]
@@ -276,7 +450,11 @@ fn hand_made_lossless_streams() {
     // one-symbol codes (green 7, red 1, blue 0, alpha 255 via 8 bits,
     // distance 0): two pixels 0xff010700, zero bits each.
     let simple = |sym: u32, eight: bool| -> Vec<(u32, u32)> {
-        if eight { vec![(1, 1), (0, 1), (1, 1), (sym, 8)] } else { vec![(1, 1), (0, 1), (0, 1), (sym, 1)] }
+        if eight {
+            vec![(1, 1), (0, 1), (1, 1), (sym, 8)]
+        } else {
+            vec![(1, 1), (0, 1), (0, 1), (sym, 1)]
+        }
     };
     let mut bits = vec![(0, 1), (0, 1), (0, 1)];
     bits.extend(simple(7, true));
@@ -309,14 +487,43 @@ fn hand_made_lossless_streams() {
 fn encoder_refuses_bad_input() {
     assert!(Image::new(2, 2, vec![0; 15]).is_err());
     let img = image(2, 2, |_, _| [0, 0, 0, 255]);
-    assert!(webp::encode(&img, &EncoderConfig { quality: 0, ..Default::default() }).is_err());
-    assert!(webp::encode(&img, &EncoderConfig { effort: 7, ..Default::default() }).is_err());
-    let wide = Image { width: 16385, height: 1, rgba: vec![255; 16385 * 4] };
+    assert!(
+        webp::encode(
+            &img,
+            &EncoderConfig {
+                quality: 0,
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        webp::encode(
+            &img,
+            &EncoderConfig {
+                effort: 7,
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+    let wide = Image {
+        width: 16385,
+        height: 1,
+        rgba: vec![255; 16385 * 4],
+    };
     assert!(webp::encode(&wide, &EncoderConfig::lossless()).is_err());
-    let mut enc = AnimationEncoder::new(2, 2, EncoderConfig::lossless(), AnimationOptions::default()).unwrap();
+    let mut enc =
+        AnimationEncoder::new(2, 2, EncoderConfig::lossless(), AnimationOptions::default())
+            .unwrap();
     assert!(enc.add_frame(&image(3, 2, |_, _| [0; 4]), 10).is_err());
     assert!(enc.add_frame(&img, 1 << 24).is_err());
-    assert!(AnimationEncoder::new(2, 2, EncoderConfig::lossless(), AnimationOptions::default()).unwrap().finish().is_err());
+    assert!(
+        AnimationEncoder::new(2, 2, EncoderConfig::lossless(), AnimationOptions::default())
+            .unwrap()
+            .finish()
+            .is_err()
+    );
 }
 
 /// The public test files, mutated, when the data is present.
@@ -334,7 +541,12 @@ fn mutated_conformance_files() {
         s ^= s << 17;
         s
     };
-    let mut names: Vec<_> = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "webp")).collect();
+    let mut names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "webp"))
+        .collect();
     names.sort();
     for p in names {
         let data = std::fs::read(&p).unwrap();

@@ -80,7 +80,11 @@ impl Image {
                 u64::from(width) * u64::from(height) * 4
             )));
         }
-        Ok(Image { width, height, rgba })
+        Ok(Image {
+            width,
+            height,
+            rgba,
+        })
     }
 
     /// Whether any pixel is less than opaque.

@@ -1,7 +1,9 @@
 //! The public encoder: stills (lossless or lossy with alpha) and
 //! animations.
 
-use crate::container::{FLAG_ALPHA, FLAG_ANIMATION, FLAG_EXIF, FLAG_ICC, FLAG_XMP, riff, vp8x, write_chunk};
+use crate::container::{
+    FLAG_ALPHA, FLAG_ANIMATION, FLAG_EXIF, FLAG_ICC, FLAG_XMP, riff, vp8x, write_chunk,
+};
 use crate::error::{Result, invalid};
 use crate::{Image, alpha, lossless, lossy};
 
@@ -83,7 +85,10 @@ fn max_side(lossless: bool) -> u32 {
 
 fn check_image(image: &Image, lossless: bool) -> Result<()> {
     if image.width == 0 || image.height == 0 {
-        return Err(invalid(format!("image of {}x{}", image.width, image.height)));
+        return Err(invalid(format!(
+            "image of {}x{}",
+            image.width, image.height
+        )));
     }
     let m = max_side(lossless);
     if image.width > m || image.height > m {
@@ -96,19 +101,29 @@ fn check_image(image: &Image, lossless: bool) -> Result<()> {
     }
     let want = image.width as usize * image.height as usize * 4;
     if image.rgba.len() != want {
-        return Err(invalid(format!("RGBA buffer of {} bytes for {}x{} (needs {want})", image.rgba.len(), image.width, image.height)));
+        return Err(invalid(format!(
+            "RGBA buffer of {} bytes for {}x{} (needs {want})",
+            image.rgba.len(),
+            image.width,
+            image.height
+        )));
     }
     Ok(())
 }
 
 /// RGBA bytes to ARGB words, transparent pixels cleared unless `exact`.
 fn to_argb(rgba: &[u8], exact: bool) -> Vec<u32> {
-    rgba.as_chunks::<4>().0.iter()
+    rgba.as_chunks::<4>()
+        .0
+        .iter()
         .map(|p| {
             if !exact && p[3] == 0 {
                 0
             } else {
-                (u32::from(p[3]) << 24) | (u32::from(p[0]) << 16) | (u32::from(p[1]) << 8) | u32::from(p[2])
+                (u32::from(p[3]) << 24)
+                    | (u32::from(p[0]) << 16)
+                    | (u32::from(p[1]) << 8)
+                    | u32::from(p[2])
             }
         })
         .collect()
@@ -121,7 +136,8 @@ fn frame_chunks(image: &Image, config: &EncoderConfig) -> Result<(Vec<u8>, bool)
     let has_alpha = image.has_alpha();
     let mut out = Vec::new();
     if config.lossless {
-        let data = lossless::encode::encode(&to_argb(&image.rgba, config.exact), w, h, config.effort);
+        let data =
+            lossless::encode::encode(&to_argb(&image.rgba, config.exact), w, h, config.effort);
         write_chunk(&mut out, b"VP8L", &data);
     } else {
         if has_alpha {
@@ -151,14 +167,28 @@ pub fn encode(image: &Image, config: &EncoderConfig) -> Result<Vec<u8>> {
         flags |= FLAG_ALPHA;
     }
     let mut body = Vec::new();
-    write_header_chunks(&mut body, &mut flags, config, image.width, image.height, None);
+    write_header_chunks(
+        &mut body,
+        &mut flags,
+        config,
+        image.width,
+        image.height,
+        None,
+    );
     body.extend_from_slice(&chunks);
     write_metadata(&mut body, config);
     Ok(riff(&body))
 }
 
 /// VP8X (with `flags` completed by the metadata present), ICCP, ANIM.
-fn write_header_chunks(body: &mut Vec<u8>, flags: &mut u8, config: &EncoderConfig, w: u32, h: u32, anim: Option<&AnimationOptions>) {
+fn write_header_chunks(
+    body: &mut Vec<u8>,
+    flags: &mut u8,
+    config: &EncoderConfig,
+    w: u32,
+    h: u32,
+    anim: Option<&AnimationOptions>,
+) {
     if config.icc_profile.is_some() {
         *flags |= FLAG_ICC;
     }
@@ -250,7 +280,12 @@ pub struct AnimationEncoder {
 
 impl AnimationEncoder {
     /// An encoder for a `width` x `height` canvas.
-    pub fn new(width: u32, height: u32, config: EncoderConfig, options: AnimationOptions) -> Result<Self> {
+    pub fn new(
+        width: u32,
+        height: u32,
+        config: EncoderConfig,
+        options: AnimationOptions,
+    ) -> Result<Self> {
         config.check()?;
         if width == 0 || height == 0 || width > 1 << 24 || height > 1 << 24 {
             return Err(invalid(format!("canvas of {width}x{height}")));
@@ -276,7 +311,9 @@ impl AnimationEncoder {
             )));
         }
         if duration_ms >= 1 << 24 {
-            return Err(invalid(format!("frame duration {duration_ms} ms (at most 2^24 - 1)")));
+            return Err(invalid(format!(
+                "frame duration {duration_ms} ms (at most 2^24 - 1)"
+            )));
         }
         let (cw, ch) = (self.width as usize, self.height as usize);
         if image.rgba.len() != cw * ch * 4 {
@@ -303,9 +340,21 @@ impl AnimationEncoder {
                     // Blending, with unchanged pixels transparent, is
                     // exact when every changed pixel is opaque.
                     let blendable = self.config.lossless || self.config.effort >= 3;
-                    if blendable && sub.as_chunks::<4>().0.iter().zip(before.as_chunks::<4>().0.iter()).all(|(s, b)| s == b || s[3] == 255) {
+                    if blendable
+                        && sub
+                            .as_chunks::<4>()
+                            .0
+                            .iter()
+                            .zip(before.as_chunks::<4>().0.iter())
+                            .all(|(s, b)| s == b || s[3] == 255)
+                    {
                         let mut rgba = sub.clone();
-                        for (s, b) in rgba.as_chunks_mut::<4>().0.iter_mut().zip(before.as_chunks::<4>().0.iter()) {
+                        for (s, b) in rgba
+                            .as_chunks_mut::<4>()
+                            .0
+                            .iter_mut()
+                            .zip(before.as_chunks::<4>().0.iter())
+                        {
                             if s == b {
                                 s.copy_from_slice(&[0, 0, 0, 0]);
                             }
@@ -320,7 +369,10 @@ impl AnimationEncoder {
         for (img, blend, r) in &candidates {
             let m = max_side(self.config.lossless);
             if img.width > m || img.height > m {
-                return Err(invalid(format!("a frame region of {}x{} exceeds the {m}-pixel side limit", img.width, img.height)));
+                return Err(invalid(format!(
+                    "a frame region of {}x{} exceeds the {m}-pixel side limit",
+                    img.width, img.height
+                )));
             }
             // The transparent pixels of a blended frame only need to stay
             // transparent; their colour is free.
@@ -361,7 +413,14 @@ impl AnimationEncoder {
             flags |= FLAG_ALPHA;
         }
         let mut body = Vec::new();
-        write_header_chunks(&mut body, &mut flags, &self.config, self.width, self.height, Some(&self.options));
+        write_header_chunks(
+            &mut body,
+            &mut flags,
+            &self.config,
+            self.width,
+            self.height,
+            Some(&self.options),
+        );
         body.extend_from_slice(&self.body);
         write_metadata(&mut body, &self.config);
         if body.len() as u64 + 4 > u64::from(u32::MAX) {
@@ -402,8 +461,13 @@ fn changed_rect(a: &[u8], b: &[u8], w: usize, h: usize) -> Option<Rect> {
         }
         y0 = y0.min(y);
         y1 = y + 1;
-        let first = (0..w).find(|&x| ra[x * 4..x * 4 + 4] != rb[x * 4..x * 4 + 4]).unwrap_or(0);
-        let last = (0..w).rev().find(|&x| ra[x * 4..x * 4 + 4] != rb[x * 4..x * 4 + 4]).unwrap_or(w - 1);
+        let first = (0..w)
+            .find(|&x| ra[x * 4..x * 4 + 4] != rb[x * 4..x * 4 + 4])
+            .unwrap_or(0);
+        let last = (0..w)
+            .rev()
+            .find(|&x| ra[x * 4..x * 4 + 4] != rb[x * 4..x * 4 + 4])
+            .unwrap_or(w - 1);
         x0 = x0.min(first);
         x1 = x1.max(last + 1);
     }

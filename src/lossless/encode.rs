@@ -27,7 +27,10 @@
 
 use super::histogram::{Histogram, nlog2n_table, shannon_bits};
 use super::lz77::{CostModel, DistanceCoder, MatchParams, Token, apply_cache, backward_references};
-use super::transform::{ColorTransformElement, bundle, bundle_bits, forward_color_pixel, mode_of, predictor_at, sub_pixels, subtract_green};
+use super::transform::{
+    ColorTransformElement, bundle, bundle_bits, forward_color_pixel, mode_of, predictor_at,
+    sub_pixels, subtract_green,
+};
 use super::*;
 use crate::bits::BitWriter;
 use crate::huffman::{codes_from_lengths, lengths_from_counts};
@@ -48,7 +51,13 @@ pub(crate) fn encode(argb: &[u32], width: usize, height: usize, effort: u8) -> V
 /// Encodes ARGB pixels as a headerless image-stream (an `ALPH` payload).
 /// `_alpha_plane` notes that only green varies, which the strategies
 /// handle on their own.
-pub(crate) fn encode_headerless(argb: &[u32], width: usize, height: usize, effort: u8, _alpha_plane: bool) -> Vec<u8> {
+pub(crate) fn encode_headerless(
+    argb: &[u32],
+    width: usize,
+    height: usize,
+    effort: u8,
+    _alpha_plane: bool,
+) -> Vec<u8> {
     best_stream(argb, width, height, effort)
 }
 
@@ -79,7 +88,13 @@ fn best_stream(px: &[u32], width: usize, height: usize, effort: u8) -> Vec<u8> {
         tried.push(Strategy::Spatial { color: false });
     }
     let streams = crate::par::map(tried.len(), 0, |i| match tried[i] {
-        Strategy::Palette => palette_stream(px, width, height, palette.as_deref().unwrap_or_default(), effort),
+        Strategy::Palette => palette_stream(
+            px,
+            width,
+            height,
+            palette.as_deref().unwrap_or_default(),
+            effort,
+        ),
         Strategy::Spatial { color } => spatial_stream(px, width, height, effort, color),
         Strategy::Plain => plain_stream(px, width, height, effort),
     });
@@ -133,7 +148,11 @@ fn palette_stream(px: &[u32], width: usize, height: usize, palette: &[u32], effo
     bw.write(palette.len() as u32 - 1, 8);
     let mut deltas = Vec::with_capacity(palette.len());
     for (i, &c) in palette.iter().enumerate() {
-        deltas.push(if i == 0 { c } else { sub_pixels(c, palette[i - 1]) });
+        deltas.push(if i == 0 {
+            c
+        } else {
+            sub_pixels(c, palette[i - 1])
+        });
     }
     write_coded_image(&mut bw, &deltas, palette.len(), 1, effort, false);
     let index_of = |p: u32| palette.binary_search(&p).unwrap_or(0) as u8;
@@ -148,7 +167,14 @@ fn palette_stream(px: &[u32], width: usize, height: usize, palette: &[u32], effo
     let bits = bundle_bits(palette.len());
     let packed = bundle(&indices, width, height, bits);
     bw.write(0, 1);
-    write_coded_image(&mut bw, &packed, subsample(width, bits), height, effort, true);
+    write_coded_image(
+        &mut bw,
+        &packed,
+        subsample(width, bits),
+        height,
+        effort,
+        true,
+    );
     bw.finish()
 }
 
@@ -173,7 +199,14 @@ fn spatial_stream(px: &[u32], width: usize, height: usize, effort: u8, color: bo
     bw.write(1, 1);
     bw.write(0, 2);
     bw.write(pbits - 2, 3);
-    write_coded_image(&mut bw, &modes, subsample(width, pbits), subsample(height, pbits), effort, false);
+    write_coded_image(
+        &mut bw,
+        &modes,
+        subsample(width, pbits),
+        subsample(height, pbits),
+        effort,
+        false,
+    );
     let mut residual = vec![0u32; img.len()];
     super::transform::forward_predictor(&img, width, height, pbits, &modes, &mut residual);
 
@@ -185,10 +218,19 @@ fn spatial_stream(px: &[u32], width: usize, height: usize, effort: u8, color: bo
             bw.write(1, 2);
             bw.write(cbits - 2, 3);
             let tw = subsample(width, cbits);
-            write_coded_image(&mut bw, &elements, tw, subsample(height, cbits), effort, false);
+            write_coded_image(
+                &mut bw,
+                &elements,
+                tw,
+                subsample(height, cbits),
+                effort,
+                false,
+            );
             for y in 0..height {
                 for x in 0..width {
-                    let e = ColorTransformElement::from_pixel(elements[(y >> cbits) * tw + (x >> cbits)]);
+                    let e = ColorTransformElement::from_pixel(
+                        elements[(y >> cbits) * tw + (x >> cbits)],
+                    );
                     let i = y * width + x;
                     residual[i] = forward_color_pixel(residual[i], e);
                 }
@@ -219,7 +261,11 @@ const SWITCH_BITS: f32 = 14.0;
 /// A predictor mode per block of `1 << bits` square.
 fn choose_predictors(px: &[u32], width: usize, height: usize, bits: u32, effort: u8) -> Vec<u32> {
     let (tw, th) = (subsample(width, bits), subsample(height, bits));
-    let candidates: Vec<u32> = if effort == 0 { vec![1, 2, 11] } else { (0..14).collect() };
+    let candidates: Vec<u32> = if effort == 0 {
+        vec![1, 2, 11]
+    } else {
+        (0..14).collect()
+    };
     // A prior that small residuals (either sign) are likely.
     let mut hist = [[0u32; 256]; 4];
     for h in hist.iter_mut() {
@@ -233,14 +279,29 @@ fn choose_predictors(px: &[u32], width: usize, height: usize, bits: u32, effort:
     for by in 0..th {
         for bx in 0..tw {
             let (x0, y0) = (bx << bits, by << bits);
-            let (x1, y1) = (((bx + 1) << bits).min(width), ((by + 1) << bits).min(height));
+            let (x1, y1) = (
+                ((bx + 1) << bits).min(width),
+                ((by + 1) << bits).min(height),
+            );
             let mut best = (f32::INFINITY, 1u32);
             // A mode the left or upper block already uses costs less to
             // signal in the predictor image.
-            let left = if bx > 0 { mode_of(modes[by * tw + bx - 1]) } else { u32::MAX };
-            let up = if by > 0 { mode_of(modes[(by - 1) * tw + bx]) } else { u32::MAX };
+            let left = if bx > 0 {
+                mode_of(modes[by * tw + bx - 1])
+            } else {
+                u32::MAX
+            };
+            let up = if by > 0 {
+                mode_of(modes[(by - 1) * tw + bx])
+            } else {
+                u32::MAX
+            };
             for &m in &candidates {
-                let start = if m == left || m == up { 0.0 } else { SWITCH_BITS };
+                let start = if m == left || m == up {
+                    0.0
+                } else {
+                    SWITCH_BITS
+                };
                 let area = (x0, x1, y0, y1);
                 let cost = match m {
                     0 => block_cost::<0>(px, width, area, &costs, start, best.0),
@@ -283,12 +344,22 @@ fn choose_predictors(px: &[u32], width: usize, height: usize, bits: u32, effort:
 /// mode cannot win). One instance per mode, so the prediction is not
 /// chosen per pixel.
 #[inline(never)]
-fn block_cost<const M: u32>(px: &[u32], width: usize, (x0, x1, y0, y1): (usize, usize, usize, usize), costs: &[[f32; 256]; 4], start: f32, bound: f32) -> f32 {
+fn block_cost<const M: u32>(
+    px: &[u32],
+    width: usize,
+    (x0, x1, y0, y1): (usize, usize, usize, usize),
+    costs: &[[f32; 256]; 4],
+    start: f32,
+    bound: f32,
+) -> f32 {
     let mut cost = start;
     for y in y0..y1 {
         for x in x0..x1 {
             let r = sub_pixels(px[y * width + x], predictor_at(px, width, x, y, M));
-            cost += costs[0][(r >> 24) as usize] + costs[1][((r >> 16) & 0xff) as usize] + costs[2][((r >> 8) & 0xff) as usize] + costs[3][(r & 0xff) as usize];
+            cost += costs[0][(r >> 24) as usize]
+                + costs[1][((r >> 16) & 0xff) as usize]
+                + costs[2][((r >> 8) & 0xff) as usize]
+                + costs[3][(r & 0xff) as usize];
         }
         if cost >= bound {
             break;
@@ -299,7 +370,13 @@ fn block_cost<const M: u32>(px: &[u32], width: usize, (x0, x1, y0, y1): (usize, 
 
 /// Colour transform elements per block, each searched for the least
 /// entropy of the block's transformed red and blue.
-fn choose_color_transform(px: &[u32], width: usize, height: usize, bits: u32, effort: u8) -> Vec<u32> {
+fn choose_color_transform(
+    px: &[u32],
+    width: usize,
+    height: usize,
+    bits: u32,
+    effort: u8,
+) -> Vec<u32> {
     let (tw, th) = (subsample(width, bits), subsample(height, bits));
     let nlog = nlog2n_table(1 << (2 * bits));
     // Every other pixel at the lower efforts.
@@ -313,7 +390,10 @@ fn choose_color_transform(px: &[u32], width: usize, height: usize, bits: u32, ef
             g.clear();
             b.clear();
             let (x0, y0) = (bx << bits, by << bits);
-            let (x1, y1) = (((bx + 1) << bits).min(width), ((by + 1) << bits).min(height));
+            let (x1, y1) = (
+                ((bx + 1) << bits).min(width),
+                ((by + 1) << bits).min(height),
+            );
             let mut k = 0;
             for y in y0..y1 {
                 for x in x0..x1 {
@@ -343,10 +423,17 @@ fn choose_color_transform(px: &[u32], width: usize, height: usize, bits: u32, ef
             let blue_cost = |gb: i8, rb: i8| -> f64 {
                 let mut h = [0u32; 256];
                 for i in 0..r.len() {
-                    let v = i32::from(b[i]) - super::transform::delta(gb, g[i]) - super::transform::delta(rb, r[i] as i8);
+                    let v = i32::from(b[i])
+                        - super::transform::delta(gb, g[i])
+                        - super::transform::delta(rb, r[i] as i8);
                     h[v as u8 as usize] += 1;
                 }
-                shannon_bits(&h, n, &nlog) + if gb == prev.green_to_blue && rb == prev.red_to_blue { 0.0 } else { 6.0 }
+                shannon_bits(&h, n, &nlog)
+                    + if gb == prev.green_to_blue && rb == prev.red_to_blue {
+                        0.0
+                    } else {
+                        6.0
+                    }
             };
             let g2r = search(red_cost, effort, prev.green_to_red);
             let mut g2b = search(|t| blue_cost(t, 0), effort, prev.green_to_blue);
@@ -407,7 +494,11 @@ fn choose_cache_bits(tokens: &[Token], px: &[u32], effort: u8) -> u32 {
         return 0;
     }
     let mut best = (f64::INFINITY, 0u32);
-    let candidates: Vec<u32> = if effort >= 3 { (0..=10).collect() } else { vec![0, 4, 7, 10] };
+    let candidates: Vec<u32> = if effort >= 3 {
+        (0..=10).collect()
+    } else {
+        vec![0, 4, 7, 10]
+    };
     for bits in candidates {
         let mut h = Histogram::new(bits);
         if bits == 0 {
@@ -457,11 +548,27 @@ struct Code {
 
 /// `entropy-coded-image` (or, with `level0`, `spatially-coded-image`):
 /// colour cache info, meta prefix codes, prefix codes, the data.
-fn write_coded_image(bw: &mut BitWriter, px: &[u32], width: usize, height: usize, effort: u8, level0: bool) {
+fn write_coded_image(
+    bw: &mut BitWriter,
+    px: &[u32],
+    width: usize,
+    height: usize,
+    effort: u8,
+    level0: bool,
+) {
     let coder = DistanceCoder::new(width);
     let params = MatchParams::for_effort(effort);
     let mut tokens = backward_references(px, width, &params, &coder, None);
-    let copied: usize = tokens.iter().map(|t| if let Token::Copy { len, .. } = t { *len as usize } else { 0 }).sum();
+    let copied: usize = tokens
+        .iter()
+        .map(|t| {
+            if let Token::Copy { len, .. } = t {
+                *len as usize
+            } else {
+                0
+            }
+        })
+        .sum();
     // A second pass priced by the first one's statistics, where copies are
     // common enough for their pricing to matter.
     if effort >= 3 && px.len() > 64 && (effort >= 5 || copied * 20 >= px.len()) {
@@ -487,13 +594,20 @@ fn write_coded_image(bw: &mut BitWriter, px: &[u32], width: usize, height: usize
     } else {
         bw.write(0, 1);
     }
-    let clusters = if level0 { cluster(&tokens, width, height, cache_bits, effort) } else { None };
+    let clusters = if level0 {
+        cluster(&tokens, width, height, cache_bits, effort)
+    } else {
+        None
+    };
     let (block_bits, block_group, histograms) = match clusters {
         Some((bits, map, hists)) => {
             bw.write(1, 1);
             bw.write(bits - 2, 3);
             let (ew, eh) = (subsample(width, bits), subsample(height, bits));
-            let image: Vec<u32> = map.iter().map(|&g| 0xff000000 | ((g >> 8) << 16) | ((g & 0xff) << 8)).collect();
+            let image: Vec<u32> = map
+                .iter()
+                .map(|&g| 0xff000000 | ((g >> 8) << 16) | ((g & 0xff) << 8))
+                .collect();
             write_coded_image(bw, &image, ew, eh, effort, false);
             (bits, map, hists)
         }
@@ -508,14 +622,30 @@ fn write_coded_image(bw: &mut BitWriter, px: &[u32], width: usize, height: usize
             (0, Vec::new(), vec![h])
         }
     };
-    let groups: Vec<[Code; 5]> = histograms.iter().map(|h| h.codes.clone().map(|c| write_code(bw, &c))).collect();
-    let ew = if block_group.is_empty() { 0 } else { subsample(width, block_bits) };
+    let groups: Vec<[Code; 5]> = histograms
+        .iter()
+        .map(|h| h.codes.clone().map(|c| write_code(bw, &c)))
+        .collect();
+    let ew = if block_group.is_empty() {
+        0
+    } else {
+        subsample(width, block_bits)
+    };
     let (mut x, mut y) = (0usize, 0usize);
     for t in &tokens {
-        let g = if block_group.is_empty() { &groups[0] } else { &groups[block_group[(y >> block_bits) * ew + (x >> block_bits)] as usize] };
+        let g = if block_group.is_empty() {
+            &groups[0]
+        } else {
+            &groups[block_group[(y >> block_bits) * ew + (x >> block_bits)] as usize]
+        };
         match *t {
             Token::Literal(p) => {
-                let (gr, r, b, a) = (((p >> 8) & 0xff) as usize, ((p >> 16) & 0xff) as usize, (p & 0xff) as usize, (p >> 24) as usize);
+                let (gr, r, b, a) = (
+                    ((p >> 8) & 0xff) as usize,
+                    ((p >> 16) & 0xff) as usize,
+                    (p & 0xff) as usize,
+                    (p >> 24) as usize,
+                );
                 bw.write(u32::from(g[0].codes[gr]), u32::from(g[0].bits[gr]));
                 bw.write(u32::from(g[1].codes[r]), u32::from(g[1].bits[r]));
                 bw.write(u32::from(g[2].codes[b]), u32::from(g[2].bits[b]));
@@ -626,7 +756,10 @@ fn write_lengths(bw: &mut BitWriter, lengths: &[u8]) {
     let cl_codes = codes_from_lengths(&cl_lengths);
     let single = cl_lengths.iter().filter(|&&l| l > 0).count() == 1;
     bw.write(0, 1);
-    let num = CODE_LENGTH_ORDER.iter().rposition(|&s| cl_lengths[s] != 0).map_or(4, |p| (p + 1).max(4));
+    let num = CODE_LENGTH_ORDER
+        .iter()
+        .rposition(|&s| cl_lengths[s] != 0)
+        .map_or(4, |p| (p + 1).max(4));
     bw.write(num as u32 - 4, 4);
     for &s in &CODE_LENGTH_ORDER[..num] {
         bw.write(u32::from(cl_lengths[s]), 3);
@@ -634,7 +767,10 @@ fn write_lengths(bw: &mut BitWriter, lengths: &[u8]) {
     bw.write(0, 1);
     for &(s, nb, e) in &tokens {
         if !single {
-            bw.write(u32::from(cl_codes[s as usize]), u32::from(cl_lengths[s as usize]));
+            bw.write(
+                u32::from(cl_codes[s as usize]),
+                u32::from(cl_lengths[s as usize]),
+            );
         }
         bw.write(u32::from(e), u32::from(nb));
     }
@@ -654,7 +790,13 @@ impl XorShift {
 
 /// Meta prefix codes: (block bits, group per block, group histograms), or
 /// `None` when one group codes the image as cheaply.
-fn cluster(tokens: &[Token], width: usize, height: usize, cache_bits: u32, effort: u8) -> Option<(u32, Vec<u32>, Vec<Histogram>)> {
+fn cluster(
+    tokens: &[Token],
+    width: usize,
+    height: usize,
+    cache_bits: u32,
+    effort: u8,
+) -> Option<(u32, Vec<u32>, Vec<Histogram>)> {
     if effort < 3 || width * height < 64 * 64 {
         return None;
     }
@@ -795,7 +937,13 @@ fn bit_costs(counts: &[u32]) -> Vec<f32> {
     }
     counts
         .iter()
-        .map(|&c| if c == 0 { 20.0 } else { (-(f64::from(c) / total).log2()) as f32 })
+        .map(|&c| {
+            if c == 0 {
+                20.0
+            } else {
+                (-(f64::from(c) / total).log2()) as f32
+            }
+        })
         .collect()
 }
 
@@ -810,7 +958,8 @@ mod tests {
             let (hdr, out) = decode::decode(&data, u64::MAX).unwrap();
             assert_eq!((hdr.width as usize, hdr.height as usize), (w, h));
             assert!(out == px, "effort {effort}, {w}x{h}");
-            let raw = decode::decode_headerless(&encode_headerless(px, w, h, effort, false), w, h).unwrap();
+            let raw = decode::decode_headerless(&encode_headerless(px, w, h, effort, false), w, h)
+                .unwrap();
             assert!(raw == px);
         }
     }
@@ -833,7 +982,14 @@ mod tests {
     fn noise_and_gradients() {
         let (w, h) = (67, 45);
         round_trip(&noise(w * h, 9), w, h);
-        let grad: Vec<u32> = (0..w * h).map(|i| 0xff000000 | (((i % w) as u32 * 3) << 16) | (((i / w) as u32 * 5) << 8) | ((i % 7) as u32)).collect();
+        let grad: Vec<u32> = (0..w * h)
+            .map(|i| {
+                0xff000000
+                    | (((i % w) as u32 * 3) << 16)
+                    | (((i / w) as u32 * 5) << 8)
+                    | ((i % 7) as u32)
+            })
+            .collect();
         round_trip(&grad, w, h);
     }
 
@@ -841,7 +997,11 @@ mod tests {
     fn few_colours_bundle() {
         for n in [1u32, 2, 3, 4, 5, 16, 17, 200, 256, 257] {
             let (w, h) = (31, 17);
-            let px: Vec<u32> = (0..w * h).map(|i| ((((i as u32).wrapping_mul(2654435761)) >> 7) % n).wrapping_mul(0x01030507)).collect();
+            let px: Vec<u32> = (0..w * h)
+                .map(|i| {
+                    ((((i as u32).wrapping_mul(2654435761)) >> 7) % n).wrapping_mul(0x01030507)
+                })
+                .collect();
             round_trip(&px, w, h);
         }
     }

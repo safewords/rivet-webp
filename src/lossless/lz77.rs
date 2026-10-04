@@ -106,7 +106,9 @@ impl DistanceCoder {
 
 #[inline]
 fn hash(a: u32, b: u32) -> usize {
-    (a.wrapping_mul(0x9E37_79B1) ^ b.wrapping_mul(0x85EB_CA77).rotate_left(7)).wrapping_mul(0x2C1B_3C6D) as usize >> (32 - HASH_BITS)
+    (a.wrapping_mul(0x9E37_79B1) ^ b.wrapping_mul(0x85EB_CA77).rotate_left(7))
+        .wrapping_mul(0x2C1B_3C6D) as usize
+        >> (32 - HASH_BITS)
 }
 
 #[inline]
@@ -137,7 +139,10 @@ impl CostModel {
         let mut acc = 0f32;
         lit.push(0.0);
         for &p in px {
-            acc += costs[0][((p >> 8) & 0xff) as usize] + costs[1][((p >> 16) & 0xff) as usize] + costs[2][(p & 0xff) as usize] + costs[3][(p >> 24) as usize];
+            acc += costs[0][((p >> 8) & 0xff) as usize]
+                + costs[1][((p >> 16) & 0xff) as usize]
+                + costs[2][(p & 0xff) as usize]
+                + costs[3][(p >> 24) as usize];
             lit.push(acc);
         }
         let mut len = [0f32; 24];
@@ -153,7 +158,8 @@ impl CostModel {
 
     #[inline]
     fn copy(&self, len: usize, dist_code: u32) -> f32 {
-        self.len[super::prefix_encode(len).0] + self.dist[super::prefix_encode(dist_code as usize).0]
+        self.len[super::prefix_encode(len).0]
+            + self.dist[super::prefix_encode(dist_code as usize).0]
     }
 
     /// The literal cost of pixels `i..j`.
@@ -189,7 +195,11 @@ struct Match {
     score: f32,
 }
 
-const NO_MATCH: Match = Match { len: 0, dist: 0, score: 0.0 };
+const NO_MATCH: Match = Match {
+    len: 0,
+    dist: 0,
+    score: 0.0,
+};
 
 impl Finder<'_> {
     fn insert(&mut self, i: usize) {
@@ -211,7 +221,11 @@ impl Finder<'_> {
                     return 0.0;
                 }
                 // About a byte of description per far distance code bit.
-                let penalty = if plane { 0.0 } else { 1.0 + ((usize::BITS - dist.leading_zeros()) / 4) as f32 };
+                let penalty = if plane {
+                    0.0
+                } else {
+                    1.0 + ((usize::BITS - dist.leading_zeros()) / 4) as f32
+                };
                 len as f32 * 4.0 - penalty
             }
         }
@@ -237,7 +251,11 @@ impl Finder<'_> {
             consider(match_len(self.px, i, i - 1, max), 1, &mut best);
         }
         if i >= self.width && self.width > 1 {
-            consider(match_len(self.px, i, i - self.width, max), self.width, &mut best);
+            consider(
+                match_len(self.px, i, i - self.width, max),
+                self.width,
+                &mut best,
+            );
         }
         if self.chain > 0 && best.len < max {
             let mut cand = self.head[hash(self.px[i], self.px[i + 1])];
@@ -274,7 +292,13 @@ const SEGMENT: usize = 1 << 17;
 /// Literals and copies for `px`, an image `width` wide. With a cost model,
 /// a copy is taken when it saves bits over the literals it replaces;
 /// without, by a length heuristic.
-pub(crate) fn backward_references(px: &[u32], width: usize, params: &MatchParams, coder: &DistanceCoder, model: Option<&CostModel>) -> Vec<Token> {
+pub(crate) fn backward_references(
+    px: &[u32],
+    width: usize,
+    params: &MatchParams,
+    coder: &DistanceCoder,
+    model: Option<&CostModel>,
+) -> Vec<Token> {
     let n = px.len();
     let seg = SEGMENT.max(n.div_ceil(32));
     let segments = n.div_ceil(seg).max(1);
@@ -305,8 +329,16 @@ fn segment_references(
         width,
         end,
         base,
-        head: if params.chain > 0 { vec![NONE; 1 << HASH_BITS] } else { Vec::new() },
-        prev: if params.chain > 0 { vec![NONE; end - base] } else { Vec::new() },
+        head: if params.chain > 0 {
+            vec![NONE; 1 << HASH_BITS]
+        } else {
+            Vec::new()
+        },
+        prev: if params.chain > 0 {
+            vec![NONE; end - base]
+        } else {
+            Vec::new()
+        },
         chain: params.chain,
         nice: params.nice,
         coder,
@@ -332,7 +364,11 @@ fn segment_references(
             let next = f.best(i + 1);
             let better = match model {
                 // A literal at i, then the next copy, against this copy.
-                Some(md) => next.len > 0 && next.score - md.literals(i, i + 1) > m.score - md.literals(i + m.len.min(next.len + 1), i + m.len),
+                Some(md) => {
+                    next.len > 0
+                        && next.score - md.literals(i, i + 1)
+                            > m.score - md.literals(i + m.len.min(next.len + 1), i + m.len)
+                }
                 None => next.len > m.len + 1,
             };
             if better {
@@ -341,12 +377,18 @@ fn segment_references(
                 pending = Some(next);
                 continue;
             }
-            out.push(Token::Copy { len: m.len as u32, dist_code: coder.code(m.dist) });
+            out.push(Token::Copy {
+                len: m.len as u32,
+                dist_code: coder.code(m.dist),
+            });
             for k in i + 1..i + m.len {
                 f.insert(k);
             }
         } else {
-            out.push(Token::Copy { len: m.len as u32, dist_code: coder.code(m.dist) });
+            out.push(Token::Copy {
+                len: m.len as u32,
+                dist_code: coder.code(m.dist),
+            });
             for k in i..i + m.len {
                 f.insert(k);
             }
@@ -417,7 +459,13 @@ mod tests {
         let mut s = 1u32;
         for i in 0..w * 40 {
             s = s.wrapping_mul(1_103_515_245).wrapping_add(12345);
-            px.push(if i % 7 < 3 { 5 } else if i > w * 10 && i % w < 9 { px[i - w] } else { s >> 28 });
+            px.push(if i % 7 < 3 {
+                5
+            } else if i > w * 10 && i % w < 9 {
+                px[i - w]
+            } else {
+                s >> 28
+            });
         }
         for effort in 0..=6 {
             let coder = DistanceCoder::new(w);
@@ -437,7 +485,13 @@ mod tests {
         let mut px: Vec<u32> = Vec::with_capacity(w * h);
         for i in 0..w * h {
             s = s.wrapping_mul(1_103_515_245).wrapping_add(12345);
-            px.push(if i > w && i % 5 != 0 { px[i - w + 1] } else if i % 11 < 4 { 9 } else { s >> 26 });
+            px.push(if i > w && i % 5 != 0 {
+                px[i - w + 1]
+            } else if i % 11 < 4 {
+                9
+            } else {
+                s >> 26
+            });
         }
         for effort in [0, 4] {
             let coder = DistanceCoder::new(w);

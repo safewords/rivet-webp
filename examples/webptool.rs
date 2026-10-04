@@ -37,7 +37,11 @@ fn main() {
         },
         "decode" => {
             let img = webp::decode(&data).expect("decode");
-            let mut out = format!("P7\nWIDTH {}\nHEIGHT {}\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n", img.width, img.height).into_bytes();
+            let mut out = format!(
+                "P7\nWIDTH {}\nHEIGHT {}\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n",
+                img.width, img.height
+            )
+            .into_bytes();
             out.extend_from_slice(&img.rgba);
             std::fs::write(&args[3], out).expect("write");
         }
@@ -52,11 +56,17 @@ fn main() {
                 px += u64::from(f.image.width) * u64::from(f.image.height);
             }
             let s = t.elapsed().as_secs_f64();
-            println!("{n} frame(s), {:.1} Mpx in {:.1} ms ({:.1} Mpx/s)", px as f64 / 1e6, s * 1e3, px as f64 / 1e6 / s);
+            println!(
+                "{n} frame(s), {:.1} Mpx in {:.1} ms ({:.1} Mpx/s)",
+                px as f64 / 1e6,
+                s * 1e3,
+                px as f64 / 1e6 / s
+            );
         }
         "encode" => {
             let png = rpng::decode(&data).expect("PNG");
-            let img = webp::Image::new(png.image.width, png.image.height, png.image.to_rgba8()).expect("image");
+            let img = webp::Image::new(png.image.width, png.image.height, png.image.to_rgba8())
+                .expect("image");
             let mut cfg = webp::EncoderConfig::default();
             for a in &args[4..] {
                 if a == "lossless" {
@@ -71,7 +81,11 @@ fn main() {
             }
             let t = Instant::now();
             let out = webp::encode(&img, &cfg).expect("encode");
-            println!("{} bytes in {:.1} ms", out.len(), t.elapsed().as_secs_f64() * 1e3);
+            println!(
+                "{} bytes in {:.1} ms",
+                out.len(),
+                t.elapsed().as_secs_f64() * 1e3
+            );
             std::fs::write(&args[3], out).expect("write");
         }
         other => eprintln!("unknown command {other}"),

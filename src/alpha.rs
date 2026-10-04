@@ -42,7 +42,10 @@ pub(crate) fn decode(data: &[u8], width: usize, height: usize) -> Result<Vec<u8>
     let mut a = match h.compression {
         0 => {
             if rest.len() < n {
-                return Err(bitstream(format!("raw ALPH data is {} bytes, the frame needs {n}", rest.len())));
+                return Err(bitstream(format!(
+                    "raw ALPH data is {} bytes, the frame needs {n}",
+                    rest.len()
+                )));
             }
             rest[..n].to_vec()
         }
@@ -50,7 +53,11 @@ pub(crate) fn decode(data: &[u8], width: usize, height: usize) -> Result<Vec<u8>
             let argb = lossless::decode::decode_headerless(rest, width, height)?;
             argb.iter().map(|&p| (p >> 8) as u8).collect()
         }
-        c => return Err(bitstream(format!("ALPH compression method {c} (0 or 1 defined)"))),
+        c => {
+            return Err(bitstream(format!(
+                "ALPH compression method {c} (0 or 1 defined)"
+            )));
+        }
     };
     unfilter(&mut a, width, height, h.filter);
     Ok(a)
@@ -117,15 +124,32 @@ pub(crate) fn encode(a: &[u8], width: usize, height: usize, effort: u8) -> Vec<u
         _ => &[0, 1, 2, 3],
     };
     let mut best: Vec<u8> = Vec::with_capacity(a.len() + 1);
-    best.push(AlphaHeader { compression: 0, filter: 0, preprocessing: 0 }.byte());
+    best.push(
+        AlphaHeader {
+            compression: 0,
+            filter: 0,
+            preprocessing: 0,
+        }
+        .byte(),
+    );
     best.extend_from_slice(a);
     for &f in filters {
         let filtered = filter(a, width, height, f);
-        let argb: Vec<u32> = filtered.iter().map(|&v| 0xff000000 | (u32::from(v) << 8)).collect();
+        let argb: Vec<u32> = filtered
+            .iter()
+            .map(|&v| 0xff000000 | (u32::from(v) << 8))
+            .collect();
         let stream = lossless::encode::encode_headerless(&argb, width, height, effort, true);
         if stream.len() + 1 < best.len() {
             best.clear();
-            best.push(AlphaHeader { compression: 1, filter: f, preprocessing: 0 }.byte());
+            best.push(
+                AlphaHeader {
+                    compression: 1,
+                    filter: f,
+                    preprocessing: 0,
+                }
+                .byte(),
+            );
             best.extend_from_slice(&stream);
         }
     }
@@ -150,7 +174,14 @@ mod tests {
     #[test]
     fn header_bits() {
         let h = AlphaHeader::parse(0b0001_1101);
-        assert_eq!(h, AlphaHeader { compression: 1, filter: 3, preprocessing: 1 });
+        assert_eq!(
+            h,
+            AlphaHeader {
+                compression: 1,
+                filter: 3,
+                preprocessing: 1
+            }
+        );
         assert_eq!(h.byte(), 0b0001_1101);
     }
 }

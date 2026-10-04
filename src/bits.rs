@@ -131,7 +131,14 @@ mod tests {
     #[test]
     fn fields_round_trip_lsb_first() {
         let mut w = BitWriter::new();
-        let fields: Vec<(u32, u32)> = (0..500u32).map(|i| (i.wrapping_mul(2654435761) >> (32 - (i % 32 + 1)), i % 32 + 1)).collect();
+        let fields: Vec<(u32, u32)> = (0..500u32)
+            .map(|i| {
+                (
+                    i.wrapping_mul(2654435761) >> (32 - (i % 32 + 1)),
+                    i % 32 + 1,
+                )
+            })
+            .collect();
         for &(v, n) in &fields {
             w.write(v, n);
         }

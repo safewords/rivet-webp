@@ -54,7 +54,9 @@ fn clamp255(v: i32) -> u32 {
 #[inline(always)]
 fn clamp_add_subtract_full(a: u32, b: u32, c: u32) -> u32 {
     let (a, b, c) = (a.to_le_bytes(), b.to_le_bytes(), c.to_le_bytes());
-    u32::from_le_bytes(std::array::from_fn(|i| (i16::from(a[i]) + i16::from(b[i]) - i16::from(c[i])).clamp(0, 255) as u8))
+    u32::from_le_bytes(std::array::from_fn(|i| {
+        (i16::from(a[i]) + i16::from(b[i]) - i16::from(c[i])).clamp(0, 255) as u8
+    }))
 }
 
 /// `ClampAddSubtractHalf(a, b)` per channel (mode 13). The RFC's `/ 2` is
@@ -104,7 +106,13 @@ pub(crate) fn mode_of(p: u32) -> u32 {
 /// pixels by a loop compiled for its mode: the modes that do not read the
 /// pixel to the left (T, TR, TL) have no dependence from pixel to pixel and
 /// are vectorised.
-pub(crate) fn inverse_predictor(px: &mut [u32], width: usize, height: usize, bits: u32, modes: &[u32]) {
+pub(crate) fn inverse_predictor(
+    px: &mut [u32],
+    width: usize,
+    height: usize,
+    bits: u32,
+    modes: &[u32],
+) {
     if width == 0 || height == 0 {
         return;
     }
@@ -193,12 +201,25 @@ fn predict_run(mode: u32, cur: &mut [u32], above: &[u32], x0: usize, x1: usize) 
 
 /// Applies the predictor transform: `residual` receives each pixel minus
 /// its prediction from `px` (section 3.5.1, as the encoder does it).
-pub(crate) fn forward_predictor(px: &[u32], width: usize, height: usize, bits: u32, modes: &[u32], residual: &mut [u32]) {
+pub(crate) fn forward_predictor(
+    px: &[u32],
+    width: usize,
+    height: usize,
+    bits: u32,
+    modes: &[u32],
+    residual: &mut [u32],
+) {
     let tw = subsample(width, bits);
     for y in 0..height {
         for x in 0..width {
             let i = y * width + x;
-            let pred = predictor_at(px, width, x, y, mode_of(modes[(y >> bits) * tw + (x >> bits)]));
+            let pred = predictor_at(
+                px,
+                width,
+                x,
+                y,
+                mode_of(modes[(y >> bits) * tw + (x >> bits)]),
+            );
             residual[i] = sub_pixels(px[i], pred);
         }
     }
@@ -215,7 +236,13 @@ pub(crate) fn predictor_at(px: &[u32], width: usize, x: usize, y: usize, mode: u
     } else if x == 0 {
         px[i - width]
     } else {
-        predict(mode, px[i - 1], px[i - width], px[i - width - 1], px[i - width + 1])
+        predict(
+            mode,
+            px[i - 1],
+            px[i - width],
+            px[i - width - 1],
+            px[i - width + 1],
+        )
     }
 }
 
@@ -240,7 +267,10 @@ impl ColorTransformElement {
 
     /// As a colour-transform-image pixel (alpha 255).
     pub(crate) fn to_pixel(self) -> u32 {
-        0xff000000 | (u32::from(self.red_to_blue as u8) << 16) | (u32::from(self.green_to_blue as u8) << 8) | u32::from(self.green_to_red as u8)
+        0xff000000
+            | (u32::from(self.red_to_blue as u8) << 16)
+            | (u32::from(self.green_to_blue as u8) << 8)
+            | u32::from(self.green_to_red as u8)
     }
 }
 
@@ -252,7 +282,13 @@ pub(crate) fn delta(t: i8, c: i8) -> i32 {
 
 /// Undoes the colour transform in place (section 3.5.2), a block's run of
 /// pixels at a time, vectorised.
-pub(crate) fn inverse_color(px: &mut [u32], width: usize, height: usize, bits: u32, elements: &[u32]) {
+pub(crate) fn inverse_color(
+    px: &mut [u32],
+    width: usize,
+    height: usize,
+    bits: u32,
+    elements: &[u32],
+) {
     let tw = subsample(width, bits);
     crate::simd::with_wide_vectors(|| {
         for (y, row) in px.chunks_exact_mut(width).take(height).enumerate() {
@@ -271,7 +307,9 @@ pub(crate) fn inverse_color(px: &mut [u32], width: usize, height: usize, bits: u
 pub(crate) fn inverse_color_pixel(p: u32, e: ColorTransformElement) -> u32 {
     let green = (p >> 8) as u8 as i8;
     let red = ((p >> 16) as i32 + delta(e.green_to_red, green)) & 0xff;
-    let blue = ((p as i32 & 0xff) + delta(e.green_to_blue, green) + delta(e.red_to_blue, red as u8 as i8)) & 0xff;
+    let blue =
+        ((p as i32 & 0xff) + delta(e.green_to_blue, green) + delta(e.red_to_blue, red as u8 as i8))
+            & 0xff;
     (p & 0xff00ff00) | ((red as u32) << 16) | blue as u32
 }
 
@@ -281,7 +319,9 @@ pub(crate) fn forward_color_pixel(p: u32, e: ColorTransformElement) -> u32 {
     let green = (p >> 8) as u8 as i8;
     let red_byte = (p >> 16) as u8;
     let red = (i32::from(red_byte) - delta(e.green_to_red, green)) & 0xff;
-    let blue = ((p as i32 & 0xff) - delta(e.green_to_blue, green) - delta(e.red_to_blue, red_byte as i8)) & 0xff;
+    let blue =
+        ((p as i32 & 0xff) - delta(e.green_to_blue, green) - delta(e.red_to_blue, red_byte as i8))
+            & 0xff;
     (p & 0xff00ff00) | ((red as u32) << 16) | blue as u32
 }
 
@@ -317,14 +357,24 @@ pub(crate) fn bundle_bits(size: usize) -> u32 {
 /// Undoes colour indexing: `packed` is `subsample(width, bits)` wide; the
 /// result is `width` wide (section 3.5.4). An index past the table gives
 /// transparent black, as the RFC says.
-pub(crate) fn inverse_color_indexing(packed: &[u32], width: usize, height: usize, bits: u32, table: &[u32]) -> Vec<u32> {
+pub(crate) fn inverse_color_indexing(
+    packed: &[u32],
+    width: usize,
+    height: usize,
+    bits: u32,
+    table: &[u32],
+) -> Vec<u32> {
     let pw = subsample(width, bits);
     let mut out = Vec::with_capacity(width * height);
     // Every value a byte can index, so no index needs a bounds check.
     let mut lut = [0u32; 256];
     lut[..table.len()].copy_from_slice(table);
     if bits == 0 {
-        out.extend(packed[..width * height].iter().map(|&p| lut[((p >> 8) & 0xff) as usize]));
+        out.extend(
+            packed[..width * height]
+                .iter()
+                .map(|&p| lut[((p >> 8) & 0xff) as usize]),
+        );
         return out;
     }
     let per = 1usize << bits;
@@ -381,7 +431,10 @@ mod tests {
             assert_eq!(sub_pixels(add_pixels(x, y), y), x);
             let avg = average2(x, y);
             for s in [0, 8, 16, 24] {
-                assert_eq!((avg >> s) & 0xff, (((x >> s) & 0xff) + ((y >> s) & 0xff)) / 2);
+                assert_eq!(
+                    (avg >> s) & 0xff,
+                    (((x >> s) & 0xff) + ((y >> s) & 0xff)) / 2
+                );
             }
         }
     }
@@ -415,7 +468,13 @@ mod tests {
     }
 
     /// The predictor transform undone a pixel at a time, as first written.
-    fn inverse_predictor_reference(px: &mut [u32], width: usize, height: usize, bits: u32, modes: &[u32]) {
+    fn inverse_predictor_reference(
+        px: &mut [u32],
+        width: usize,
+        height: usize,
+        bits: u32,
+        modes: &[u32],
+    ) {
         let tw = subsample(width, bits);
         px[0] = add_pixels(px[0], 0xff000000);
         for x in 1..width {
@@ -427,7 +486,13 @@ mod tests {
             for x in 1..width {
                 let mode = mode_of(modes[(y >> bits) * tw + (x >> bits)]);
                 let i = row + x;
-                let pred = predict(mode, px[i - 1], px[i - width], px[i - width - 1], px[i - width + 1]);
+                let pred = predict(
+                    mode,
+                    px[i - 1],
+                    px[i - width],
+                    px[i - width - 1],
+                    px[i - width + 1],
+                );
                 px[i] = add_pixels(px[i], pred);
             }
         }
@@ -435,12 +500,24 @@ mod tests {
 
     #[test]
     fn inverse_transforms_match_the_reference() {
-        for (w, h, bits) in [(1, 1, 2), (1, 9, 2), (9, 1, 3), (2, 2, 2), (37, 23, 2), (64, 17, 3), (33, 33, 5), (100, 7, 9)] {
+        for (w, h, bits) in [
+            (1, 1, 2),
+            (1, 9, 2),
+            (9, 1, 3),
+            (2, 2, 2),
+            (37, 23, 2),
+            (64, 17, 3),
+            (33, 33, 5),
+            (100, 7, 9),
+        ] {
             for seed in 1..6 {
                 let px = noise(w * h, seed * 31);
                 let tw = subsample(w, bits);
                 // Every mode, 14 and 15 included, in every position.
-                let modes: Vec<u32> = noise(tw * subsample(h, bits), seed).iter().map(|&r| (r & 0xffff_00ff) | ((r % 16) << 8)).collect();
+                let modes: Vec<u32> = noise(tw * subsample(h, bits), seed)
+                    .iter()
+                    .map(|&r| (r & 0xffff_00ff) | ((r % 16) << 8))
+                    .collect();
                 let mut a = px.clone();
                 let mut b = px.clone();
                 inverse_predictor(&mut a, w, h, bits, &modes);
@@ -450,7 +527,14 @@ mod tests {
                 let mut a = px.clone();
                 inverse_color(&mut a, w, h, bits, &elements);
                 let b: Vec<u32> = (0..w * h)
-                    .map(|i| inverse_color_pixel(px[i], ColorTransformElement::from_pixel(elements[((i / w) >> bits) * tw + ((i % w) >> bits)])))
+                    .map(|i| {
+                        inverse_color_pixel(
+                            px[i],
+                            ColorTransformElement::from_pixel(
+                                elements[((i / w) >> bits) * tw + ((i % w) >> bits)],
+                            ),
+                        )
+                    })
                     .collect();
                 assert_eq!(a, b, "colour {w}x{h} bits {bits} seed {seed}");
             }
@@ -462,7 +546,9 @@ mod tests {
         let (w, h, bits) = (37, 23, 2);
         let px = noise(w * h, 3);
         let tw = subsample(w, bits);
-        let modes: Vec<u32> = (0..tw * subsample(h, bits)).map(|i| 0xff000000 | (((i % 16) as u32) << 8)).collect();
+        let modes: Vec<u32> = (0..tw * subsample(h, bits))
+            .map(|i| 0xff000000 | (((i % 16) as u32) << 8))
+            .collect();
         let mut res = vec![0; w * h];
         forward_predictor(&px, w, h, bits, &modes, &mut res);
         inverse_predictor(&mut res, w, h, bits, &modes);

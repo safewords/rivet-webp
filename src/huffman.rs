@@ -226,7 +226,10 @@ pub(crate) fn lengths_from_counts(counts: &[u32], max_len: u32) -> Vec<u8> {
     }
     let mut floor = 0u32;
     loop {
-        let weights: Vec<u64> = used.iter().map(|&i| u64::from(counts[i].max(floor))).collect();
+        let weights: Vec<u64> = used
+            .iter()
+            .map(|&i| u64::from(counts[i].max(floor)))
+            .collect();
         let depth = huffman_depths(&weights);
         if depth.iter().all(|&d| d <= max_len) {
             for (k, &i) in used.iter().enumerate() {
@@ -290,7 +293,11 @@ mod tests {
         assert!(lengths.iter().all(|&l| u32::from(l) <= max_len));
         let codes = codes_from_lengths(&lengths);
         let table = HuffmanTable::new(&lengths).unwrap();
-        let symbols: Vec<usize> = (0..counts.len()).filter(|&s| counts[s] > 0).cycle().take(2000).collect();
+        let symbols: Vec<usize> = (0..counts.len())
+            .filter(|&s| counts[s] > 0)
+            .cycle()
+            .take(2000)
+            .collect();
         let mut w = BitWriter::new();
         let single = lengths.iter().filter(|&&l| l > 0).count() == 1;
         for &s in &symbols {

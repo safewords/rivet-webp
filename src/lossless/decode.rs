@@ -1,6 +1,8 @@
 //! The VP8L decoder (RFC 9649 section 3).
 
-use super::transform::{add_green, inverse_color, inverse_color_indexing, inverse_predictor, bundle_bits};
+use super::transform::{
+    add_green, bundle_bits, inverse_color, inverse_color_indexing, inverse_predictor,
+};
 use super::*;
 use crate::bits::BitReader;
 use crate::error::{Result, bitstream, limit, unsupported};
@@ -21,7 +23,10 @@ pub(crate) fn read_header(data: &[u8]) -> Result<Header> {
         return Err(bitstream("VP8L bitstream shorter than its 5-byte header"));
     }
     if data[0] != SIGNATURE {
-        return Err(bitstream(format!("VP8L signature 0x{:02x}, not 0x2f", data[0])));
+        return Err(bitstream(format!(
+            "VP8L signature 0x{:02x}, not 0x2f",
+            data[0]
+        )));
     }
     let bits = u32::from_le_bytes(data[1..5].try_into().unwrap());
     let width = (bits & 0x3fff) + 1;
@@ -29,7 +34,9 @@ pub(crate) fn read_header(data: &[u8]) -> Result<Header> {
     let alpha_hint = (bits >> 28) & 1 == 1;
     let version = bits >> 29;
     if version != 0 {
-        return Err(unsupported(format!("VP8L version {version} (only 0 is defined)")));
+        return Err(unsupported(format!(
+            "VP8L version {version} (only 0 is defined)"
+        )));
     }
     Ok(Header {
         width,
@@ -61,10 +68,22 @@ pub(crate) fn decode_headerless(data: &[u8], width: usize, height: usize) -> Res
 }
 
 enum Transform {
-    Predictor { bits: u32, width: usize, image: Vec<u32> },
-    Color { bits: u32, width: usize, image: Vec<u32> },
+    Predictor {
+        bits: u32,
+        width: usize,
+        image: Vec<u32>,
+    },
+    Color {
+        bits: u32,
+        width: usize,
+        image: Vec<u32>,
+    },
     SubtractGreen,
-    ColorIndexing { bits: u32, width: usize, table: Vec<u32> },
+    ColorIndexing {
+        bits: u32,
+        width: usize,
+        table: Vec<u32>,
+    },
 }
 
 /// `image-stream`: the transforms, then the spatially coded image, then the
@@ -82,11 +101,20 @@ fn decode_image_stream(br: &mut BitReader<'_>, width: usize, height: usize) -> R
         match kind {
             0 | 1 => {
                 let bits = br.read(3) + 2;
-                let image = decode_coded_image(br, subsample(xsize, bits), subsample(height, bits), false)?;
+                let image =
+                    decode_coded_image(br, subsample(xsize, bits), subsample(height, bits), false)?;
                 transforms.push(if kind == 0 {
-                    Transform::Predictor { bits, width: xsize, image }
+                    Transform::Predictor {
+                        bits,
+                        width: xsize,
+                        image,
+                    }
                 } else {
-                    Transform::Color { bits, width: xsize, image }
+                    Transform::Color {
+                        bits,
+                        width: xsize,
+                        image,
+                    }
                 });
             }
             2 => transforms.push(Transform::SubtractGreen),
@@ -97,7 +125,11 @@ fn decode_image_stream(br: &mut BitReader<'_>, width: usize, height: usize) -> R
                     table[i] = transform::add_pixels(table[i], table[i - 1]);
                 }
                 let bits = bundle_bits(size);
-                transforms.push(Transform::ColorIndexing { bits, width: xsize, table });
+                transforms.push(Transform::ColorIndexing {
+                    bits,
+                    width: xsize,
+                    table,
+                });
                 xsize = subsample(xsize, bits);
             }
         }
@@ -105,8 +137,12 @@ fn decode_image_stream(br: &mut BitReader<'_>, width: usize, height: usize) -> R
     let mut px = decode_coded_image(br, xsize, height, true)?;
     for t in transforms.iter().rev() {
         match t {
-            Transform::Predictor { bits, width, image } => inverse_predictor(&mut px, *width, height, *bits, image),
-            Transform::Color { bits, width, image } => inverse_color(&mut px, *width, height, *bits, image),
+            Transform::Predictor { bits, width, image } => {
+                inverse_predictor(&mut px, *width, height, *bits, image)
+            }
+            Transform::Color { bits, width, image } => {
+                inverse_color(&mut px, *width, height, *bits, image)
+            }
             Transform::SubtractGreen => add_green(&mut px),
             Transform::ColorIndexing { bits, width, table } => {
                 px = inverse_color_indexing(&px, *width, height, *bits, table);
@@ -129,17 +165,28 @@ struct Group {
 }
 
 /// `spatially-coded-image` (level 0, `meta` true) or `entropy-coded-image`.
-fn decode_coded_image(br: &mut BitReader<'_>, width: usize, height: usize, meta: bool) -> Result<Vec<u32>> {
+fn decode_coded_image(
+    br: &mut BitReader<'_>,
+    width: usize,
+    height: usize,
+    meta: bool,
+) -> Result<Vec<u32>> {
     let cache_bits = if br.read(1) == 1 {
         let b = br.read(4);
         if !(1..=11).contains(&b) {
-            return Err(bitstream(format!("colour cache of {b} bits (1 to 11 allowed)")));
+            return Err(bitstream(format!(
+                "colour cache of {b} bits (1 to 11 allowed)"
+            )));
         }
         b
     } else {
         0
     };
-    let cache_size = if cache_bits > 0 { 1usize << cache_bits } else { 0 };
+    let cache_size = if cache_bits > 0 {
+        1usize << cache_bits
+    } else {
+        0
+    };
 
     // The entropy image, and which of its groups are used.
     let mut entropy: Option<(u32, usize, Vec<u32>)> = None;
@@ -148,7 +195,12 @@ fn decode_coded_image(br: &mut BitReader<'_>, width: usize, height: usize, meta:
         let bits = br.read(3) + 2;
         let pw = subsample(width, bits);
         let image = decode_coded_image(br, pw, subsample(height, bits), false)?;
-        num_groups = image.iter().map(|&p| ((p >> 8) & 0xffff) as usize).max().unwrap_or(0) + 1;
+        num_groups = image
+            .iter()
+            .map(|&p| ((p >> 8) & 0xffff) as usize)
+            .max()
+            .unwrap_or(0)
+            + 1;
         entropy = Some((bits, pw, image));
     }
     // Groups the image never names are read (they are in the stream) and
@@ -165,7 +217,13 @@ fn decode_coded_image(br: &mut BitReader<'_>, width: usize, height: usize, meta:
         }
         None => slot[0] = 0,
     }
-    let alphabets = [NUM_LITERALS + NUM_LENGTH_CODES + cache_size, NUM_LITERALS, NUM_LITERALS, NUM_LITERALS, NUM_DISTANCE_CODES];
+    let alphabets = [
+        NUM_LITERALS + NUM_LENGTH_CODES + cache_size,
+        NUM_LITERALS,
+        NUM_LITERALS,
+        NUM_LITERALS,
+        NUM_DISTANCE_CODES,
+    ];
     let mut groups: Vec<Group> = Vec::new();
     for &s in &slot {
         let mut tables = Vec::with_capacity(5);
@@ -180,15 +238,39 @@ fn decode_coded_image(br: &mut BitReader<'_>, width: usize, height: usize, meta:
         }
         if s != u32::MAX {
             let mut it = tables.into_iter();
-            let (green, red, blue, alpha, distance) = (it.next().unwrap(), it.next().unwrap(), it.next().unwrap(), it.next().unwrap(), it.next().unwrap());
+            let (green, red, blue, alpha, distance) = (
+                it.next().unwrap(),
+                it.next().unwrap(),
+                it.next().unwrap(),
+                it.next().unwrap(),
+                it.next().unwrap(),
+            );
             let fixed_rba = match (red.single(), blue.single(), alpha.single()) {
-                (Some(r), Some(b), Some(a)) => Some((u32::from(a) << 24) | (u32::from(r) << 16) | u32::from(b)),
+                (Some(r), Some(b), Some(a)) => {
+                    Some((u32::from(a) << 24) | (u32::from(r) << 16) | u32::from(b))
+                }
                 _ => None,
             };
-            groups.push(Group { green, red, blue, alpha, distance, fixed_rba });
+            groups.push(Group {
+                green,
+                red,
+                blue,
+                alpha,
+                distance,
+                fixed_rba,
+            });
         }
     }
-    let entropy = entropy.map(|(bits, pw, image)| (bits, pw, image.iter().map(|&p| slot[((p >> 8) & 0xffff) as usize] as usize).collect::<Vec<_>>()));
+    let entropy = entropy.map(|(bits, pw, image)| {
+        (
+            bits,
+            pw,
+            image
+                .iter()
+                .map(|&p| slot[((p >> 8) & 0xffff) as usize] as usize)
+                .collect::<Vec<_>>(),
+        )
+    });
 
     let total = width * height;
     let mut px: Vec<u32> = Vec::with_capacity(total);
@@ -240,10 +322,14 @@ fn decode_coded_image(br: &mut BitReader<'_>, width: usize, height: usize, meta:
             let dist = code_to_distance(code, width);
             let pos = px.len();
             if dist > pos {
-                return Err(bitstream("VP8L backward reference before the start of the image"));
+                return Err(bitstream(
+                    "VP8L backward reference before the start of the image",
+                ));
             }
             if length > total - pos {
-                return Err(bitstream("VP8L backward reference past the end of the image"));
+                return Err(bitstream(
+                    "VP8L backward reference past the end of the image",
+                ));
             }
             if dist >= length {
                 px.extend_from_within(pos - dist..pos - dist + length);
@@ -300,13 +386,17 @@ fn read_code_lengths(br: &mut BitReader<'_>, size: usize) -> Result<Vec<u8>> {
         let first_bits = if br.read(1) == 1 { 8 } else { 1 };
         let s0 = br.read(first_bits) as usize;
         if s0 >= size {
-            return Err(bitstream(format!("prefix code symbol {s0} outside an alphabet of {size}")));
+            return Err(bitstream(format!(
+                "prefix code symbol {s0} outside an alphabet of {size}"
+            )));
         }
         lengths[s0] = 1;
         if n == 2 {
             let s1 = br.read(8) as usize;
             if s1 >= size {
-                return Err(bitstream(format!("prefix code symbol {s1} outside an alphabet of {size}")));
+                return Err(bitstream(format!(
+                    "prefix code symbol {s1} outside an alphabet of {size}"
+                )));
             }
             lengths[s1] = 1;
         }
@@ -323,7 +413,9 @@ fn read_code_lengths(br: &mut BitReader<'_>, size: usize) -> Result<Vec<u8>> {
         let nbits = 2 + 2 * br.read(3);
         let m = 2 + br.read(nbits) as usize;
         if m > size {
-            return Err(bitstream(format!("max_symbol {m} above an alphabet of {size}")));
+            return Err(bitstream(format!(
+                "max_symbol {m} above an alphabet of {size}"
+            )));
         }
         m
     } else {

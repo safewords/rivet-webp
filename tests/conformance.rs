@@ -29,7 +29,11 @@ fn data_dir() -> Option<PathBuf> {
 }
 
 fn pam(img: &webp::Image) -> Vec<u8> {
-    let mut out = format!("P7\nWIDTH {}\nHEIGHT {}\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n", img.width, img.height).into_bytes();
+    let mut out = format!(
+        "P7\nWIDTH {}\nHEIGHT {}\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n",
+        img.width, img.height
+    )
+    .into_bytes();
     out.extend_from_slice(&img.rgba);
     out
 }
@@ -39,7 +43,14 @@ fn read_pam(path: &Path) -> webp::Image {
     let b = std::fs::read(path).unwrap();
     let end = b.windows(7).position(|w| w == b"ENDHDR\n").unwrap() + 7;
     let head = std::str::from_utf8(&b[..end]).unwrap();
-    let field = |k: &str| -> u32 { head.lines().find_map(|l| l.strip_prefix(k)).unwrap().trim().parse().unwrap() };
+    let field = |k: &str| -> u32 {
+        head.lines()
+            .find_map(|l| l.strip_prefix(k))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap()
+    };
     let (w, h) = (field("WIDTH"), field("HEIGHT"));
     webp::Image::new(w, h, b[end..].to_vec()).unwrap()
 }
@@ -101,7 +112,10 @@ fn libwebp_test_data() {
             digests.insert(name.trim().to_string(), hash.to_string());
         }
     }
-    let mut names: Vec<String> = digests.keys().filter_map(|k| k.strip_suffix(".pam").map(str::to_string)).collect();
+    let mut names: Vec<String> = digests
+        .keys()
+        .filter_map(|k| k.strip_suffix(".pam").map(str::to_string))
+        .collect();
     names.sort();
     let mut failures = Vec::new();
     let (mut exact_rgba, mut exact_yuv) = (0, 0);
@@ -129,7 +143,8 @@ fn libwebp_test_data() {
             let c = chunks(&data);
             let vp8 = c.iter().find(|(f, _)| f == b"VP8 ").unwrap().1;
             let has_alph = c.iter().any(|(f, _)| f == b"ALPH");
-            let a: Option<Vec<u8>> = has_alph.then(|| img.rgba.as_chunks::<4>().0.iter().map(|p| p[3]).collect());
+            let a: Option<Vec<u8>> =
+                has_alph.then(|| img.rgba.as_chunks::<4>().0.iter().map(|p| p[3]).collect());
             let got = md5_hex(&pgm(vp8, a.as_deref()));
             Some(got == digests[&format!("{name}.pgm")])
         } else {
@@ -143,7 +158,15 @@ fn libwebp_test_data() {
         }
         println!(
             "| {name} | {} | {}x{} | {} | {} |",
-            if lossy { if info.has_alpha { "lossy+alpha" } else { "lossy" } } else { "lossless" },
+            if lossy {
+                if info.has_alpha {
+                    "lossy+alpha"
+                } else {
+                    "lossy"
+                }
+            } else {
+                "lossless"
+            },
             img.width,
             img.height,
             if pam_ok { "exact" } else { "differs" },
@@ -197,7 +220,12 @@ fn libwebp_test_data() {
             Err(e) => failures.push(format!("{name}: {e}")),
         }
     }
-    assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} failures:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 fn read_png(path: &Path) -> webp::Image {
@@ -213,15 +241,30 @@ fn gallery() {
     };
     let dir = dir.join("gallery");
     let mut failures = Vec::new();
-    println!("| file | size | reference | alpha | RGB: max diff | RGB: mean abs diff | RGB PSNR dB |");
+    println!(
+        "| file | size | reference | alpha | RGB: max diff | RGB: mean abs diff | RGB PSNR dB |"
+    );
     println!("|---|---|---|---|---|---|---|");
-    let compare = |name: &str, got: &webp::Image, want: &webp::Image, exact: bool, failures: &mut Vec<String>| {
+    let compare = |name: &str,
+                   got: &webp::Image,
+                   want: &webp::Image,
+                   exact: bool,
+                   failures: &mut Vec<String>| {
         if (got.width, got.height) != (want.width, want.height) {
-            failures.push(format!("{name}: {}x{} against a {}x{} reference", got.width, got.height, want.width, want.height));
+            failures.push(format!(
+                "{name}: {}x{} against a {}x{} reference",
+                got.width, got.height, want.width, want.height
+            ));
             return;
         }
         let (mut max, mut sum, mut sq, mut n, mut alpha_diff) = (0i32, 0u64, 0u64, 0u64, 0usize);
-        for (g, w) in got.rgba.as_chunks::<4>().0.iter().zip(want.rgba.as_chunks::<4>().0.iter()) {
+        for (g, w) in got
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(want.rgba.as_chunks::<4>().0.iter())
+        {
             if g[3] != w[3] {
                 alpha_diff += 1;
             }
@@ -239,14 +282,26 @@ fn gallery() {
             }
         }
         let mean = sum as f64 / n.max(1) as f64;
-        let psnr = if sq == 0 { f64::INFINITY } else { 10.0 * (255.0f64 * 255.0 / (sq as f64 / n as f64)).log10() };
+        let psnr = if sq == 0 {
+            f64::INFINITY
+        } else {
+            10.0 * (255.0f64 * 255.0 / (sq as f64 / n as f64)).log10()
+        };
         println!(
             "| {name} | {}x{} | {} | {} | {max} | {mean:.3} | {} |",
             got.width,
             got.height,
             if exact { "exact" } else { "tolerance" },
-            if alpha_diff == 0 { "exact".to_string() } else { format!("{alpha_diff} differ") },
-            if psnr.is_finite() { format!("{psnr:.2}") } else { "inf".into() }
+            if alpha_diff == 0 {
+                "exact".to_string()
+            } else {
+                format!("{alpha_diff} differ")
+            },
+            if psnr.is_finite() {
+                format!("{psnr:.2}")
+            } else {
+                "inf".into()
+            }
         );
         if alpha_diff > 0 {
             failures.push(format!("{name}: {alpha_diff} alpha values differ"));
@@ -257,7 +312,9 @@ fn gallery() {
         // Tolerance for lossy RGB against another decoder's rendering:
         // the conversion and upsampling differ, the planes do not.
         if !exact && (mean > 1.5 || psnr < 38.0) {
-            failures.push(format!("{name}: RGB outside tolerance (mean {mean:.3}, PSNR {psnr:.2})"));
+            failures.push(format!(
+                "{name}: RGB outside tolerance (mean {mean:.3}, PSNR {psnr:.2})"
+            ));
         }
     };
     for i in 1..=5 {
@@ -265,13 +322,25 @@ fn gallery() {
         let ll = format!("gallery3_{i}_webp_ll.webp");
         let got = webp::decode(&std::fs::read(dir.join(&ll)).unwrap());
         match got {
-            Ok(img) => compare(&ll, &img, &read_png(&dir.join(format!("gallery3_{i}_webp_ll.png"))), true, &mut failures),
+            Ok(img) => compare(
+                &ll,
+                &img,
+                &read_png(&dir.join(format!("gallery3_{i}_webp_ll.png"))),
+                true,
+                &mut failures,
+            ),
             Err(e) => failures.push(format!("{ll}: {e}")),
         }
         // Lossy with alpha: alpha exact, RGB within tolerance.
         let a = format!("gallery3_{i}_webp_a.webp");
         match webp::decode(&std::fs::read(dir.join(&a)).unwrap()) {
-            Ok(img) => compare(&a, &img, &read_png(&dir.join(format!("gallery3_{i}_webp_a.png"))), false, &mut failures),
+            Ok(img) => compare(
+                &a,
+                &img,
+                &read_png(&dir.join(format!("gallery3_{i}_webp_a.png"))),
+                false,
+                &mut failures,
+            ),
             Err(e) => failures.push(format!("{a}: {e}")),
         }
     }
@@ -283,7 +352,13 @@ fn gallery() {
             Ok(img) => {
                 let src = read_png(&dir.join(format!("gallery_{i}.png")));
                 let (mut sq, mut n) = (0u64, 0u64);
-                for (g, w) in img.rgba.as_chunks::<4>().0.iter().zip(src.rgba.as_chunks::<4>().0.iter()) {
+                for (g, w) in img
+                    .rgba
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .zip(src.rgba.as_chunks::<4>().0.iter())
+                {
                     for c in 0..3 {
                         let d = i64::from(g[c]) - i64::from(w[c]);
                         sq += (d * d) as u64;
@@ -291,7 +366,10 @@ fn gallery() {
                     }
                 }
                 let psnr = 10.0 * (255.0f64 * 255.0 / (sq as f64 / n as f64)).log10();
-                println!("| {name} | {}x{} | source PNG | - | - | - | {psnr:.2} |", img.width, img.height);
+                println!(
+                    "| {name} | {}x{} | source PNG | - | - | - | {psnr:.2} |",
+                    img.width, img.height
+                );
             }
             Err(e) => failures.push(format!("{name}: {e}")),
         }
@@ -321,5 +399,10 @@ fn gallery() {
     if count != info.frame_count || last_ts != info.duration_ms {
         failures.push("animated_1.webp: frames or durations do not add up".into());
     }
-    assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} failures:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
