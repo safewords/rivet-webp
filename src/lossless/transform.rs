@@ -26,25 +26,26 @@ fn average2(a: u32, b: u32) -> u32 {
     (((a ^ b) & 0xfefefefe) >> 1) + (a & b)
 }
 
-#[inline(always)]
+#[cfg(test)]
 fn channel(p: u32, shift: u32) -> i32 {
     ((p >> shift) & 0xff) as i32
 }
 
-/// `Select` (table 2, mode 11).
+/// `Select` (table 2, mode 11). The RFC's estimate is `L + T - TL`, so its
+/// distances to L and T are |T - TL| and |L - TL| channel by channel.
 #[inline(always)]
 fn select(l: u32, t: u32, tl: u32) -> u32 {
+    let (lb, tb, cb) = (l.to_le_bytes(), t.to_le_bytes(), tl.to_le_bytes());
     let mut pl = 0;
     let mut pt = 0;
-    for s in [24, 16, 8, 0] {
-        let estimate = channel(l, s) + channel(t, s) - channel(tl, s);
-        pl += (estimate - channel(l, s)).abs();
-        pt += (estimate - channel(t, s)).abs();
+    for c in 0..4 {
+        pl += (i32::from(tb[c]) - i32::from(cb[c])).abs();
+        pt += (i32::from(lb[c]) - i32::from(cb[c])).abs();
     }
     if pl < pt { l } else { t }
 }
 
-#[inline(always)]
+#[cfg(test)]
 fn clamp255(v: i32) -> u32 {
     v.clamp(0, 255) as u32
 }
@@ -52,23 +53,19 @@ fn clamp255(v: i32) -> u32 {
 /// `ClampAddSubtractFull(a, b, c)` per channel (mode 12).
 #[inline(always)]
 fn clamp_add_subtract_full(a: u32, b: u32, c: u32) -> u32 {
-    let mut out = 0;
-    for s in [24, 16, 8, 0] {
-        out |= clamp255(channel(a, s) + channel(b, s) - channel(c, s)) << s;
-    }
-    out
+    let (a, b, c) = (a.to_le_bytes(), b.to_le_bytes(), c.to_le_bytes());
+    u32::from_le_bytes(std::array::from_fn(|i| (i16::from(a[i]) + i16::from(b[i]) - i16::from(c[i])).clamp(0, 255) as u8))
 }
 
 /// `ClampAddSubtractHalf(a, b)` per channel (mode 13). The RFC's `/ 2` is
 /// C's division, which truncates toward zero; so does Rust's.
 #[inline(always)]
 fn clamp_add_subtract_half(a: u32, b: u32) -> u32 {
-    let mut out = 0;
-    for s in [24, 16, 8, 0] {
-        let (x, y) = (channel(a, s), channel(b, s));
-        out |= clamp255(x + (x - y) / 2) << s;
-    }
-    out
+    let (a, b) = (a.to_le_bytes(), b.to_le_bytes());
+    u32::from_le_bytes(std::array::from_fn(|i| {
+        let (x, y) = (i16::from(a[i]), i16::from(b[i]));
+        (x + (x - y) / 2).clamp(0, 255) as u8
+    }))
 }
 
 /// The predicted value for mode `mode` (table 2). Modes 14 and 15 — which
@@ -102,6 +99,11 @@ pub(crate) fn mode_of(p: u32) -> u32 {
 }
 
 /// Undoes the predictor transform in place (section 3.5.1).
+///
+/// Row by row, with the row above as its own slice, and each block's run of
+/// pixels by a loop compiled for its mode: the modes that do not read the
+/// pixel to the left (T, TR, TL) have no dependence from pixel to pixel and
+/// are vectorised.
 pub(crate) fn inverse_predictor(px: &mut [u32], width: usize, height: usize, bits: u32, modes: &[u32]) {
     if width == 0 || height == 0 {
         return;
@@ -111,26 +113,81 @@ pub(crate) fn inverse_predictor(px: &mut [u32], width: usize, height: usize, bit
     for x in 1..width {
         px[x] = add_pixels(px[x], px[x - 1]);
     }
-    for y in 1..height {
-        let row = y * width;
-        px[row] = add_pixels(px[row], px[row - width]);
-        let mrow = (y >> bits) * tw;
-        let mut x = 1;
-        while x < width {
-            let mode = mode_of(modes[mrow + (x >> bits)]);
-            let end = (((x >> bits) + 1) << bits).min(width);
-            for x in x..end {
-                let i = row + x;
-                let l = px[i - 1];
-                let t = px[i - width];
-                let tl = px[i - width - 1];
-                // On the last column this is the row's first pixel, as the
-                // RFC says the top-right neighbour is there.
-                let tr = px[i - width + 1];
-                px[i] = add_pixels(px[i], predict(mode, l, t, tl, tr));
+    crate::simd::with_wide_vectors(|| {
+        for y in 1..height {
+            let (done, rest) = px.split_at_mut(y * width);
+            let above = &done[(y - 1) * width..];
+            let cur = &mut rest[..width];
+            cur[0] = add_pixels(cur[0], above[0]);
+            let mrow = (y >> bits) * tw;
+            let mut x = 1;
+            while x < width {
+                let mode = mode_of(modes[mrow + (x >> bits)]);
+                let end = (((x >> bits) + 1) << bits).min(width);
+                // The last column's top-right neighbour is the row's own
+                // first pixel (the RFC places it there); it is done apart.
+                let run_end = end.min(width - 1);
+                predict_run(mode, cur, above, x, run_end);
+                if end == width && x < width {
+                    let i = width - 1;
+                    if run_end <= i {
+                        let pred = predict(mode, cur[i - 1], above[i], above[i - 1], cur[0]);
+                        cur[i] = add_pixels(cur[i], pred);
+                    }
+                }
+                x = end;
             }
-            x = end;
         }
+    })
+}
+
+/// Pixels `x0..x1` of `cur` (none of them the last column, all past the
+/// first) under one mode.
+#[inline(always)]
+fn predict_run(mode: u32, cur: &mut [u32], above: &[u32], x0: usize, x1: usize) {
+    #[inline(always)]
+    fn run<const M: u32>(cur: &mut [u32], above: &[u32], x0: usize, x1: usize) {
+        if x0 >= x1 {
+            return;
+        }
+        match M {
+            // No dependence on the left: independent pixels.
+            2..=4 => {
+                let off = match M {
+                    2 => 0,
+                    3 => 1,
+                    _ => -1isize,
+                };
+                let src = &above[(x0 as isize + off) as usize..(x1 as isize + off) as usize];
+                for (c, &a) in cur[x0..x1].iter_mut().zip(src) {
+                    *c = add_pixels(*c, a);
+                }
+            }
+            _ => {
+                let mut l = cur[x0 - 1];
+                for i in x0..x1 {
+                    let v = add_pixels(cur[i], predict(M, l, above[i], above[i - 1], above[i + 1]));
+                    cur[i] = v;
+                    l = v;
+                }
+            }
+        }
+    }
+    match mode {
+        1 => run::<1>(cur, above, x0, x1),
+        2 => run::<2>(cur, above, x0, x1),
+        3 => run::<3>(cur, above, x0, x1),
+        4 => run::<4>(cur, above, x0, x1),
+        5 => run::<5>(cur, above, x0, x1),
+        6 => run::<6>(cur, above, x0, x1),
+        7 => run::<7>(cur, above, x0, x1),
+        8 => run::<8>(cur, above, x0, x1),
+        9 => run::<9>(cur, above, x0, x1),
+        10 => run::<10>(cur, above, x0, x1),
+        11 => run::<11>(cur, above, x0, x1),
+        12 => run::<12>(cur, above, x0, x1),
+        13 => run::<13>(cur, above, x0, x1),
+        _ => run::<0>(cur, above, x0, x1),
     }
 }
 
@@ -193,17 +250,21 @@ pub(crate) fn delta(t: i8, c: i8) -> i32 {
     (i32::from(t) * i32::from(c)) >> 5
 }
 
-/// Undoes the colour transform in place (section 3.5.2).
+/// Undoes the colour transform in place (section 3.5.2), a block's run of
+/// pixels at a time, vectorised.
 pub(crate) fn inverse_color(px: &mut [u32], width: usize, height: usize, bits: u32, elements: &[u32]) {
     let tw = subsample(width, bits);
-    for y in 0..height {
-        let erow = (y >> bits) * tw;
-        for x in 0..width {
-            let e = ColorTransformElement::from_pixel(elements[erow + (x >> bits)]);
-            let i = y * width + x;
-            px[i] = inverse_color_pixel(px[i], e);
+    crate::simd::with_wide_vectors(|| {
+        for (y, row) in px.chunks_exact_mut(width).take(height).enumerate() {
+            let erow = &elements[(y >> bits) * tw..];
+            for (run, &e) in row.chunks_mut(1 << bits).zip(erow) {
+                let e = ColorTransformElement::from_pixel(e);
+                for p in run {
+                    *p = inverse_color_pixel(*p, e);
+                }
+            }
         }
-    }
+    })
 }
 
 #[inline(always)]
@@ -226,10 +287,12 @@ pub(crate) fn forward_color_pixel(p: u32, e: ColorTransformElement) -> u32 {
 
 /// Undoes subtract-green in place (section 3.5.3).
 pub(crate) fn add_green(px: &mut [u32]) {
-    for p in px {
-        let g = (*p >> 8) & 0xff;
-        *p = add_pixels(*p, (g << 16) | g);
-    }
+    crate::simd::with_wide_vectors(|| {
+        for p in px {
+            let g = (*p >> 8) & 0xff;
+            *p = add_pixels(*p, (g << 16) | g);
+        }
+    })
 }
 
 /// Subtract-green, the encoder's direction.
@@ -319,6 +382,77 @@ mod tests {
             let avg = average2(x, y);
             for s in [0, 8, 16, 24] {
                 assert_eq!((avg >> s) & 0xff, (((x >> s) & 0xff) + ((y >> s) & 0xff)) / 2);
+            }
+        }
+    }
+
+    fn select_reference(l: u32, t: u32, tl: u32) -> u32 {
+        let mut pl = 0;
+        let mut pt = 0;
+        for s in [24, 16, 8, 0] {
+            let estimate = channel(l, s) + channel(t, s) - channel(tl, s);
+            pl += (estimate - channel(l, s)).abs();
+            pt += (estimate - channel(t, s)).abs();
+        }
+        if pl < pt { l } else { t }
+    }
+
+    #[test]
+    fn channel_arithmetic_matches_the_definitions() {
+        let n = noise(30_000, 77);
+        for &[a, b, c] in n.as_chunks::<3>().0 {
+            assert_eq!(select(a, b, c), select_reference(a, b, c));
+            let mut full = 0;
+            let mut half = 0;
+            for s in [24, 16, 8, 0] {
+                full |= clamp255(channel(a, s) + channel(b, s) - channel(c, s)) << s;
+                let (x, y) = (channel(a, s), channel(b, s));
+                half |= clamp255(x + (x - y) / 2) << s;
+            }
+            assert_eq!(clamp_add_subtract_full(a, b, c), full);
+            assert_eq!(clamp_add_subtract_half(a, b), half);
+        }
+    }
+
+    /// The predictor transform undone a pixel at a time, as first written.
+    fn inverse_predictor_reference(px: &mut [u32], width: usize, height: usize, bits: u32, modes: &[u32]) {
+        let tw = subsample(width, bits);
+        px[0] = add_pixels(px[0], 0xff000000);
+        for x in 1..width {
+            px[x] = add_pixels(px[x], px[x - 1]);
+        }
+        for y in 1..height {
+            let row = y * width;
+            px[row] = add_pixels(px[row], px[row - width]);
+            for x in 1..width {
+                let mode = mode_of(modes[(y >> bits) * tw + (x >> bits)]);
+                let i = row + x;
+                let pred = predict(mode, px[i - 1], px[i - width], px[i - width - 1], px[i - width + 1]);
+                px[i] = add_pixels(px[i], pred);
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_transforms_match_the_reference() {
+        for (w, h, bits) in [(1, 1, 2), (1, 9, 2), (9, 1, 3), (2, 2, 2), (37, 23, 2), (64, 17, 3), (33, 33, 5), (100, 7, 9)] {
+            for seed in 1..6 {
+                let px = noise(w * h, seed * 31);
+                let tw = subsample(w, bits);
+                // Every mode, 14 and 15 included, in every position.
+                let modes: Vec<u32> = noise(tw * subsample(h, bits), seed).iter().map(|&r| (r & 0xffff_00ff) | ((r % 16) << 8)).collect();
+                let mut a = px.clone();
+                let mut b = px.clone();
+                inverse_predictor(&mut a, w, h, bits, &modes);
+                inverse_predictor_reference(&mut b, w, h, bits, &modes);
+                assert_eq!(a, b, "{w}x{h} bits {bits} seed {seed}");
+                let elements = noise(tw * subsample(h, bits), seed + 99);
+                let mut a = px.clone();
+                inverse_color(&mut a, w, h, bits, &elements);
+                let b: Vec<u32> = (0..w * h)
+                    .map(|i| inverse_color_pixel(px[i], ColorTransformElement::from_pixel(elements[((i / w) >> bits) * tw + ((i % w) >> bits)])))
+                    .collect();
+                assert_eq!(a, b, "colour {w}x{h} bits {bits} seed {seed}");
             }
         }
     }

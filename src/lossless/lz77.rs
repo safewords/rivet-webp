@@ -166,6 +166,10 @@ impl CostModel {
 struct Finder<'a> {
     px: &'a [u32],
     width: usize,
+    /// Matches end here (the end of the segment being coded).
+    end: usize,
+    /// The first position in the chains; `prev` is indexed from it.
+    base: usize,
     head: Vec<u32>,
     prev: Vec<u32>,
     chain: usize,
@@ -193,7 +197,7 @@ impl Finder<'_> {
             return;
         }
         let h = hash(self.px[i], self.px[i + 1]);
-        self.prev[i] = self.head[h];
+        self.prev[i - self.base] = self.head[h];
         self.head[h] = i as u32;
     }
 
@@ -215,8 +219,7 @@ impl Finder<'_> {
 
     /// The best copy at `i`, or a length of 0.
     fn best(&self, i: usize) -> Match {
-        let n = self.px.len();
-        let max = (n - i).min(MAX_LENGTH);
+        let max = (self.end - i).min(MAX_LENGTH);
         if max < 2 {
             return NO_MATCH;
         }
@@ -242,7 +245,7 @@ impl Finder<'_> {
             while cand != NONE && steps < self.chain {
                 let c = cand as usize;
                 let dist = i - c;
-                if dist > MAX_DISTANCE {
+                if dist > MAX_DISTANCE || c < self.base {
                     break;
                 }
                 // Cheap reject: the pixel that would extend the best.
@@ -253,7 +256,7 @@ impl Finder<'_> {
                         break;
                     }
                 }
-                cand = self.prev[c];
+                cand = self.prev[c - self.base];
                 steps += 1;
             }
         }
@@ -261,23 +264,60 @@ impl Finder<'_> {
     }
 }
 
+/// Pixels per segment: images larger than this are matched in segments of
+/// at least this many pixels (and at most 32 segments), each with every
+/// earlier pixel in reach (up to the largest distance) as history, on
+/// several threads. Matches end at segment boundaries; the result does not
+/// depend on the number of threads.
+const SEGMENT: usize = 1 << 17;
+
 /// Literals and copies for `px`, an image `width` wide. With a cost model,
 /// a copy is taken when it saves bits over the literals it replaces;
 /// without, by a length heuristic.
 pub(crate) fn backward_references(px: &[u32], width: usize, params: &MatchParams, coder: &DistanceCoder, model: Option<&CostModel>) -> Vec<Token> {
     let n = px.len();
+    let seg = SEGMENT.max(n.div_ceil(32));
+    let segments = n.div_ceil(seg).max(1);
+    let parts = crate::par::map(segments, 0, |k| {
+        let (start, end) = (k * seg, ((k + 1) * seg).min(n));
+        segment_references(px, width, params, coder, model, start, end)
+    });
+    let mut out = Vec::with_capacity(parts.iter().map(Vec::len).sum());
+    for p in parts {
+        out.extend_from_slice(&p);
+    }
+    out
+}
+
+/// [`backward_references`] for pixels `start..end`.
+fn segment_references(
+    px: &[u32],
+    width: usize,
+    params: &MatchParams,
+    coder: &DistanceCoder,
+    model: Option<&CostModel>,
+    start: usize,
+    end: usize,
+) -> Vec<Token> {
+    let base = start.saturating_sub(MAX_DISTANCE);
     let mut f = Finder {
         px,
         width,
+        end,
+        base,
         head: if params.chain > 0 { vec![NONE; 1 << HASH_BITS] } else { Vec::new() },
-        prev: if params.chain > 0 { vec![NONE; n] } else { Vec::new() },
+        prev: if params.chain > 0 { vec![NONE; end - base] } else { Vec::new() },
         chain: params.chain,
         nice: params.nice,
         coder,
         model,
     };
-    let mut out = Vec::with_capacity(n / 2 + 16);
-    let mut i = 0;
+    for k in base..start {
+        f.insert(k);
+    }
+    let n = end;
+    let mut out = Vec::with_capacity((end - start) / 2 + 16);
+    let mut i = start;
     let mut pending: Option<Match> = None;
     while i < n {
         let m = pending.take().unwrap_or_else(|| f.best(i));
@@ -384,6 +424,26 @@ mod tests {
             let t = backward_references(&px, w, &MatchParams::for_effort(effort), &coder, None);
             assert_eq!(expand(&t, w), px, "effort {effort}");
             assert!(t.len() < px.len());
+        }
+    }
+
+    #[test]
+    fn segmented_references_reproduce_the_pixels() {
+        // Over three segments: rows repeating with a shift, runs and noise,
+        // so copies reach back across segment boundaries.
+        let w = 613;
+        let h = (3 * SEGMENT) / w + 7;
+        let mut s = 7u32;
+        let mut px: Vec<u32> = Vec::with_capacity(w * h);
+        for i in 0..w * h {
+            s = s.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            px.push(if i > w && i % 5 != 0 { px[i - w + 1] } else if i % 11 < 4 { 9 } else { s >> 26 });
+        }
+        for effort in [0, 4] {
+            let coder = DistanceCoder::new(w);
+            let t = backward_references(&px, w, &MatchParams::for_effort(effort), &coder, None);
+            assert_eq!(expand(&t, w), px, "effort {effort}");
+            assert!(t.len() < px.len(), "effort {effort}: {} tokens", t.len());
         }
     }
 }

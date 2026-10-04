@@ -211,10 +211,13 @@ fn decode_frame(f: &FrameRef<'_>) -> Result<Vec<u8>> {
         Bitstream::Lossless(d) => {
             let (h, argb) = lossless::decode::decode(d, u64::MAX)?;
             debug_assert_eq!((h.width, h.height), (f.width, f.height));
-            let mut out = Vec::with_capacity(argb.len() * 4);
-            for p in argb {
-                out.extend_from_slice(&[(p >> 16) as u8, (p >> 8) as u8, p as u8, (p >> 24) as u8]);
-            }
+            // ARGB words to RGBA bytes: red and blue trade places.
+            let mut out = vec![0u8; argb.len() * 4];
+            crate::simd::with_wide_vectors(|| {
+                for (o, &p) in out.as_chunks_mut::<4>().0.iter_mut().zip(&argb) {
+                    *o = ((p & 0xff00ff00) | ((p >> 16) & 0xff) | ((p & 0xff) << 16)).to_le_bytes();
+                }
+            });
             Ok(out)
         }
         Bitstream::Lossy(d) => {

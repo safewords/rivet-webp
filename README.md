@@ -17,7 +17,9 @@ libwebp. Usable on its own by anything that has WebP bytes and wants RGBA,
 or RGBA and wants WebP.
 
 Published as `rivet-webp`; **imported as `webp`** (`use webp::…`). One
-dependency (rivet-vp8), no features, no build script, no `unsafe`.
+dependency (rivet-vp8), no build script; `unsafe` only to call code
+compiled for AVX2 once the processor is known to have it
+([`src/simd.rs`](src/simd.rs)), which the `force-scalar` feature turns off.
 
 ```toml
 [dependencies]
@@ -117,6 +119,26 @@ The data is Google's and not in the repository:
 checked against `tools/testdata.sha256`), and
 `WEBP_TESTDATA_DIR=DIR cargo test --release -- --nocapture` runs all of the
 above with the tables. Figures are in [docs/VALIDATION.md](docs/VALIDATION.md).
+
+## Speed
+
+Release build, Ryzen 9 9950X, three 1080x720 RGBA frames of camera video
+(2.33 megapixels), lossless, megapixels a second:
+
+| | before | now |
+|---|---|---|
+| decode | 51 | 72 |
+| encode, effort 0 | 21 | 31 |
+| encode, effort 4 (the default) | 1.5 | 4.1 |
+
+The inverse transforms run a block's pixels with a loop compiled for its
+predictor mode (the modes that do not read the left pixel vectorise) and
+the colour transform and RGBA conversion vectorised, built for AVX2 where
+the processor has it. The encoder finds backward references in segments
+of at least 2^17 pixels (each with all earlier pixels in reach as history)
+and tries its strategies on several threads; images up to 2^17 pixels
+encode exactly as before, larger ones within a few bytes, and the output
+does not depend on the number of threads.
 
 ## License
 

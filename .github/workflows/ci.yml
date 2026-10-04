@@ -27,6 +27,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Tests
         run: cargo test --release
+      # The same tests with the AVX2 variants compiled out.
+      - name: Tests, baseline code only (force-scalar)
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm'
+        run: cargo test --release --features force-scalar
       - name: Robustness with overflow checks (debug)
         run: cargo test --test robustness
 

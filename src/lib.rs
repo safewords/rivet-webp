@@ -36,7 +36,8 @@
 //! # Ok(()) }
 //! ```
 
-#![forbid(unsafe_code)]
+// Unsafe code is confined to the run-time CPU dispatch in `simd`.
+#![deny(unsafe_code)]
 #![warn(missing_docs)]
 // Pixel loops index several arrays at once; index loops say that plainly.
 #![allow(clippy::needless_range_loop)]
@@ -50,6 +51,8 @@ mod error;
 mod huffman;
 mod lossless;
 mod lossy;
+mod par;
+mod simd;
 
 pub use decoder::{DecodeOptions, Decoder, Format, Frame, Frames, Info, UnknownChunk};
 pub use encoder::{AnimationEncoder, AnimationOptions, EncoderConfig, encode};

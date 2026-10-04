@@ -73,9 +73,19 @@ impl Histogram {
     }
 }
 
-/// `n * log2(n)`.
+/// `n * log2(n)`, from a table for small `n` (the table holds this same
+/// computation's results, so the values are identical).
 #[inline]
 pub(crate) fn nlog2n(n: u32) -> f64 {
+    const SMALL: usize = 4096;
+    static TABLE: std::sync::OnceLock<Vec<f64>> = std::sync::OnceLock::new();
+    if (n as usize) < SMALL {
+        return TABLE.get_or_init(|| (0..SMALL as u32).map(nlog2n_direct).collect())[n as usize];
+    }
+    nlog2n_direct(n)
+}
+
+fn nlog2n_direct(n: u32) -> f64 {
     if n <= 1 {
         0.0
     } else {

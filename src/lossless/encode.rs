@@ -53,26 +53,41 @@ pub(crate) fn encode_headerless(argb: &[u32], width: usize, height: usize, effor
 }
 
 /// Tries the strategies `effort` allows; keeps the smallest.
+///
+/// The strategies are independent, so they run on several threads; the
+/// first of the smallest is kept, as in a serial run.
 fn best_stream(px: &[u32], width: usize, height: usize, effort: u8) -> Vec<u8> {
     let small = width * height <= 4096;
     let palette = palette_of(px);
+    #[derive(Clone, Copy)]
+    enum Strategy {
+        Palette,
+        Spatial { color: bool },
+        Plain,
+    }
+    let mut tried = Vec::new();
+    if palette.is_some() {
+        tried.push(Strategy::Palette);
+    }
+    if palette.is_none() || effort >= 3 || small {
+        tried.push(Strategy::Spatial { color: true });
+    }
+    if effort >= 5 || small {
+        tried.push(Strategy::Plain);
+    }
+    if effort >= 6 && palette.is_none() {
+        tried.push(Strategy::Spatial { color: false });
+    }
+    let streams = crate::par::map(tried.len(), 0, |i| match tried[i] {
+        Strategy::Palette => palette_stream(px, width, height, palette.as_deref().unwrap_or_default(), effort),
+        Strategy::Spatial { color } => spatial_stream(px, width, height, effort, color),
+        Strategy::Plain => plain_stream(px, width, height, effort),
+    });
     let mut best: Option<Vec<u8>> = None;
-    let mut keep = |s: Vec<u8>| {
+    for s in streams {
         if best.as_ref().is_none_or(|b| s.len() < b.len()) {
             best = Some(s);
         }
-    };
-    if let Some(p) = &palette {
-        keep(palette_stream(px, width, height, p, effort));
-    }
-    if palette.is_none() || effort >= 3 || small {
-        keep(spatial_stream(px, width, height, effort, true));
-    }
-    if effort >= 5 || small {
-        keep(plain_stream(px, width, height, effort));
-    }
-    if effort >= 6 && palette.is_none() {
-        keep(spatial_stream(px, width, height, effort, false));
     }
     best.unwrap_or_default()
 }
@@ -225,16 +240,24 @@ fn choose_predictors(px: &[u32], width: usize, height: usize, bits: u32, effort:
             let left = if bx > 0 { mode_of(modes[by * tw + bx - 1]) } else { u32::MAX };
             let up = if by > 0 { mode_of(modes[(by - 1) * tw + bx]) } else { u32::MAX };
             for &m in &candidates {
-                let mut cost = if m == left || m == up { 0.0 } else { SWITCH_BITS };
-                'block: for y in y0..y1 {
-                    for x in x0..x1 {
-                        let r = sub_pixels(px[y * width + x], predictor_at(px, width, x, y, m));
-                        cost += costs[0][(r >> 24) as usize] + costs[1][((r >> 16) & 0xff) as usize] + costs[2][((r >> 8) & 0xff) as usize] + costs[3][(r & 0xff) as usize];
-                    }
-                    if cost >= best.0 {
-                        break 'block;
-                    }
-                }
+                let start = if m == left || m == up { 0.0 } else { SWITCH_BITS };
+                let area = (x0, x1, y0, y1);
+                let cost = match m {
+                    0 => block_cost::<0>(px, width, area, &costs, start, best.0),
+                    1 => block_cost::<1>(px, width, area, &costs, start, best.0),
+                    2 => block_cost::<2>(px, width, area, &costs, start, best.0),
+                    3 => block_cost::<3>(px, width, area, &costs, start, best.0),
+                    4 => block_cost::<4>(px, width, area, &costs, start, best.0),
+                    5 => block_cost::<5>(px, width, area, &costs, start, best.0),
+                    6 => block_cost::<6>(px, width, area, &costs, start, best.0),
+                    7 => block_cost::<7>(px, width, area, &costs, start, best.0),
+                    8 => block_cost::<8>(px, width, area, &costs, start, best.0),
+                    9 => block_cost::<9>(px, width, area, &costs, start, best.0),
+                    10 => block_cost::<10>(px, width, area, &costs, start, best.0),
+                    11 => block_cost::<11>(px, width, area, &costs, start, best.0),
+                    12 => block_cost::<12>(px, width, area, &costs, start, best.0),
+                    _ => block_cost::<13>(px, width, area, &costs, start, best.0),
+                };
                 if cost < best.0 {
                     best = (cost, m);
                 }
@@ -253,6 +276,25 @@ fn choose_predictors(px: &[u32], width: usize, height: usize, bits: u32, effort:
         costs = cost_table(&hist);
     }
     modes
+}
+
+/// The bits a block's residuals cost under mode `M`, added in raster order
+/// to `start`; once a row ends at `bound` or more, the rest is skipped (the
+/// mode cannot win). One instance per mode, so the prediction is not
+/// chosen per pixel.
+#[inline(never)]
+fn block_cost<const M: u32>(px: &[u32], width: usize, (x0, x1, y0, y1): (usize, usize, usize, usize), costs: &[[f32; 256]; 4], start: f32, bound: f32) -> f32 {
+    let mut cost = start;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let r = sub_pixels(px[y * width + x], predictor_at(px, width, x, y, M));
+            cost += costs[0][(r >> 24) as usize] + costs[1][((r >> 16) & 0xff) as usize] + costs[2][((r >> 8) & 0xff) as usize] + costs[3][(r & 0xff) as usize];
+        }
+        if cost >= bound {
+            break;
+        }
+    }
+    cost
 }
 
 /// Colour transform elements per block, each searched for the least
